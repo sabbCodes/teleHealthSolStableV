@@ -1,7 +1,7 @@
 "use client";
 import { W3SSdk } from "@circle-fin/w3s-pw-web-sdk";
 import { useEffect } from "react";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 
 interface WalletSetupProps {
   userToken: string;

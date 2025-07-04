@@ -4,28 +4,20 @@ import { circleUserSdk } from "@/lib/circle-user-sdk";
 export async function POST(req: NextRequest) {
   try {
     const { userToken } = await req.json();
-
     if (!userToken) {
       return NextResponse.json(
         { error: "userToken is required" },
         { status: 400 }
       );
     }
-
-    const { data } = await circleUserSdk.createUserPinWithWallets({
-      userToken,
-      accountType: "EOA",
-      blockchains: ["SOL-DEVNET"],
-    });
-
-    if (!data?.challengeId) {
+    const { data } = await circleUserSdk.listWallets({ userToken });
+    if (!data?.wallets) {
       return NextResponse.json(
-        { error: "Failed to initialize user and get challengeId" },
-        { status: 500 }
+        { error: "No wallets found for user" },
+        { status: 404 }
       );
     }
-
-    return NextResponse.json({ challengeId: data.challengeId });
+    return NextResponse.json({ wallets: data.wallets });
   } catch (error: unknown) {
     let details = undefined;
     let message = "Internal server error";
@@ -39,7 +31,7 @@ export async function POST(req: NextRequest) {
     } else if (typeof error === "string") {
       message = error;
     }
-    console.error("Error initializing wallet:", details || message);
+    console.error("Error listing wallets:", details || message);
     return NextResponse.json({ error: message, details }, { status: 500 });
   }
 }

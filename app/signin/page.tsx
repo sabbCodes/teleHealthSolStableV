@@ -18,7 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import Link from "next/link";
 import { Heart, Mail, Lock, Eye, EyeOff } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { W3SSdk } from "@circle-fin/w3s-pw-web-sdk";
 
 export default function SignInPage() {
@@ -34,19 +34,24 @@ export default function SignInPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showSignInPassword, setShowSignInPassword] = useState(false);
   const [passwordError, setPasswordError] = useState("");
+  const [pendingWalletUserToken, setPendingWalletUserToken] = useState<
+    string | null
+  >(null);
+  const [pendingWalletEmail, setPendingWalletEmail] = useState<string | null>(
+    null
+  );
   const router = useRouter();
 
   useEffect(() => {
-    // Initialize SDK only on the client-side
-    try {
-      const sdkInstance = new W3SSdk();
-      setSdk(sdkInstance);
-      console.log("[Circle SDK] Instance created");
-    } catch (err) {
-      console.error("[Circle SDK] Error creating instance:", err);
-    }
+    // The onLoginComplete callback is NOT firing consistently for the OTP flow.
+    // We will initialize the SDK here, and handle the OTP response via a manual
+    // message listener inside the `handleEmailAuth` function.
+    const sdkInstance = new W3SSdk();
+    setSdk(sdkInstance);
+    console.log("[Circle SDK] Instance created.");
   }, []);
 
+  // Effect to clear form state when switching between sign-in/sign-up
   useEffect(() => {
     setEmail("");
     setPassword("");
@@ -54,81 +59,6 @@ export default function SignInPage() {
     setPasswordError("");
     setIsLoading(false);
   }, [tab]);
-
-  // Add a useEffect to log deviceId fetching
-  useEffect(() => {
-    const fetchDeviceId = async () => {
-      if (!sdk) {
-        console.warn("[Circle SDK] SDK not initialized yet");
-        return;
-      }
-      try {
-        // Fetch appId from backend for logging
-        const configRes = await fetch("/api/circle/config");
-        const { appId } = await configRes.json();
-        if (!appId) {
-          console.error(
-            "[Circle SDK] No appId returned from /api/circle/config"
-          );
-          return;
-        }
-        console.log("[Circle SDK] Setting app settings with appId:", appId);
-        await sdk.setAppSettings({ appId });
-        console.log("[Circle SDK] App settings set");
-
-        // Try to get deviceId with retry logic
-        let deviceId: string | null = null;
-        let retries = 3;
-
-        while (retries > 0 && !deviceId) {
-          try {
-            console.log(
-              `[Circle SDK] Attempting to get deviceId (attempt ${
-                4 - retries
-              }/3)`
-            );
-            deviceId = await sdk.getDeviceId();
-            console.log("[Circle SDK] deviceId fetched:", deviceId);
-
-            if (!deviceId) {
-              console.warn(
-                `[Circle SDK] deviceId is null/undefined, retrying... (${
-                  retries - 1
-                } attempts left)`
-              );
-              retries--;
-              if (retries > 0) {
-                await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 second before retry
-              }
-            }
-          } catch (deviceError) {
-            console.error(
-              `[Circle SDK] Error getting deviceId (attempt ${4 - retries}/3):`,
-              deviceError
-            );
-            retries--;
-            if (retries > 0) {
-              await new Promise((resolve) => setTimeout(resolve, 1000));
-            }
-          }
-        }
-
-        if (!deviceId) {
-          console.error(
-            "[Circle SDK] Failed to get deviceId after all retries"
-          );
-          // Try alternative approach - generate a temporary deviceId
-          const tempDeviceId = `temp_${Date.now()}_${Math.random()
-            .toString(36)
-            .substr(2, 9)}`;
-          console.log("[Circle SDK] Using temporary deviceId:", tempDeviceId);
-        }
-      } catch (err) {
-        console.error("[Circle SDK] Error during deviceId fetch:", err);
-      }
-    };
-    fetchDeviceId();
-  }, [sdk]);
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
@@ -148,7 +78,6 @@ export default function SignInPage() {
   };
 
   const handleEmailAuth = async (event: React.FormEvent) => {
-    console.log("handleEmailAuth called");
     event.preventDefault();
     setIsLoading(true);
     setPasswordError("");
@@ -173,169 +102,137 @@ export default function SignInPage() {
         description: "Please wait a moment and try again.",
       });
       setIsLoading(false);
-      console.error("SDK not ready");
       return;
     }
 
     try {
-      // 1. Set App Settings with your Circle App ID
-      console.log("Fetching Circle appId from /api/circle/config...");
+      // 1. Get Circle App ID
       const configRes = await fetch("/api/circle/config");
       const { appId } = await configRes.json();
-      console.log("Setting SDK app settings with appId:", appId);
-      await sdk.setAppSettings({ appId });
+      sdk.setAppSettings({ appId });
 
-      // 2. Get deviceId from the Circle SDK
-      console.log("Getting deviceId from SDK...");
+      // 2. Get deviceId (best effort)
       let deviceId: string | null = null;
       try {
         deviceId = await sdk.getDeviceId();
-        console.log("Device ID from SDK:", deviceId, typeof deviceId);
       } catch (err) {
-        console.error("Error getting deviceId from SDK:", err);
-      }
-
-      if (!deviceId || typeof deviceId !== "string") {
-        console.warn("Device ID from SDK failed, trying without deviceId");
-        // Try without deviceId first
-        deviceId = null;
+        console.warn("Could not get deviceId from SDK, proceeding without it.");
       }
 
       // 3. Get OTP tokens from our backend
-      console.log("Requesting OTP tokens from backend", { email, deviceId });
       const otpRes = await fetch("/api/circle/users/email/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, deviceId }),
       });
       const otpData = await otpRes.json();
-      console.log("OTP backend response:", otpData);
       if (!otpRes.ok)
         throw new Error(otpData.error || "Failed to start email verification.");
 
-      // 4. Extract tokens from backend response
+      // 4. Update SDK configs
       const { deviceToken, deviceEncryptionKey, otpToken } = otpData;
-      console.log("Received from backend:", {
-        deviceToken,
-        deviceEncryptionKey,
-        otpToken,
+      sdk.updateConfigs({
+        appSettings: { appId },
+        loginConfigs: {
+          deviceToken,
+          deviceEncryptionKey,
+          otpToken,
+        },
       });
 
-      // 5. Set authentication with deviceToken and deviceEncryptionKey
-      console.log(
-        "Setting SDK authentication with deviceToken and deviceEncryptionKey"
-      );
-      try {
-        await sdk.setAuthentication({
-          userToken: deviceToken,
-          encryptionKey: deviceEncryptionKey,
-        });
-        console.log("SDK authentication set successfully");
-      } catch (authError) {
-        console.error("Error setting SDK authentication:", authError);
-        toast({
-          variant: "destructive",
-          title: "Authentication Error",
-          description: "Failed to authenticate with Circle SDK.",
-        });
-        setIsLoading(false);
-        return;
-      }
+      // 5. Setup the manual listener to handle the OTP result
+      const handleLoginMessage = async (event: MessageEvent) => {
+        if (
+          event.origin !== "https://pw-auth.circle.com" ||
+          !event.data?.onEmailLoginVerified
+        ) {
+          return;
+        }
 
-      // 6. Execute OTP modal using otpToken
-      console.log("Executing OTP modal with otpToken:", otpToken);
-      console.log("SDK state before execute:", {
-        sdk: !!sdk,
-        appId: appId,
-        deviceToken: !!deviceToken,
-        deviceEncryptionKey: !!deviceEncryptionKey,
-        otpToken: !!otpToken,
-      });
+        console.log(
+          "--- [SUCCESS] Manual listener caught onEmailLoginVerified event ---"
+        );
+        window.removeEventListener("message", handleLoginMessage); // Clean up immediately
 
-      try {
-        sdk.execute(otpToken, async (error, result) => {
-          console.log("OTP execute callback triggered", { error, result });
-          if (error) {
-            console.error("OTP challenge error:", error);
-            toast({
-              variant: "destructive",
-              title: "OTP Verification Failed",
-              description: error.message || "An unknown error occurred.",
-            });
-            setIsLoading(false);
-            return;
-          }
-          console.log("OTP challenge success:", result);
+        const { error, result } = event.data.onEmailLoginVerified;
 
-          // 7. After OTP, get userToken and encryptionKey from backend for PIN setup
+        if (error) {
+          console.error(
+            "[Circle SDK] OTP verification error from listener:",
+            error
+          );
+          toast({
+            variant: "destructive",
+            title: "OTP Verification Failed",
+            description: error.message || "An unexpected error occurred.",
+          });
+          setIsLoading(false);
+          return;
+        }
+
+        if (result) {
+          toast({
+            title: "OTP Verified!",
+            description: "Proceeding to wallet setup...",
+          });
+
           try {
-            console.log("Requesting userToken and encryptionKey from backend", {
-              email,
+            // Set authentication on the SDK with the fresh tokens
+            sdk.setAuthentication({
+              userToken: result.userToken,
+              encryptionKey: result.encryptionKey,
             });
-            const sessionRes = await fetch("/api/circle/session", {
+
+            // Use THIS userToken for wallet setup
+            const walletInitRes = await fetch("/api/circle/wallets/init", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ userId: email }),
+              body: JSON.stringify({ userToken: result.userToken }),
             });
-            const sessionData = await sessionRes.json();
-            const { userToken, encryptionKey } = sessionData;
+            if (!walletInitRes.ok)
+              throw new Error((await walletInitRes.json()).error);
 
-            // 8. Request PIN challenge from backend
-            console.log("Requesting PIN challenge from backend", { userToken });
-            const pinRes = await fetch("/api/circle/wallets/init", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ userToken }),
-            });
-            const pinData = await pinRes.json();
-            console.log("PIN backend response:", pinData);
-            if (!pinRes.ok)
-              throw new Error(
-                pinData.error || "Failed to start wallet PIN setup."
-              );
+            const { challengeId } = await walletInitRes.json();
 
-            // 9. Execute PIN challenge (shows Circle's PIN modal)
             console.log(
-              "Executing PIN challenge with challengeId:",
-              pinData.challengeId
+              "[Circle SDK] About to execute challengeId:",
+              challengeId
             );
-            sdk.execute(pinData.challengeId, (pinError, pinResult) => {
+            sdk.execute(challengeId, (pinError, pinResult) => {
               setIsLoading(false);
               if (pinError) {
+                console.error("[Circle SDK] PIN/Recovery UI error:", pinError);
                 toast({
                   variant: "destructive",
-                  title: "Wallet PIN Setup Failed",
-                  description: pinError.message || "An unknown error occurred.",
+                  title: "Wallet Setup Failed",
+                  description: pinError.message,
                 });
-                console.error("PIN challenge error:", pinError);
                 return;
               }
-              console.log("PIN challenge success:", pinResult);
-              router.push("/account-type-selection");
+              console.log(
+                "[Circle SDK] PIN/Recovery UI completed. pinResult:",
+                pinResult
+              );
+              // Set state to trigger wallet fetch and redirect in useEffect
+              setPendingWalletUserToken(result.userToken);
+              setPendingWalletEmail(email);
             });
-          } catch (pinError) {
+          } catch (flowError) {
+            console.error("[App] Error during post-OTP flow:", flowError);
             toast({
               variant: "destructive",
-              title: "Error",
-              description: (pinError as Error).message,
+              title: "Account Creation Failed",
+              description: (flowError as Error).message,
             });
             setIsLoading(false);
-            console.error("PIN challenge fetch error:", pinError);
           }
-        });
-      } catch (otpError) {
-        console.error("Error executing OTP modal:", otpError);
-        const errorMessage =
-          otpError instanceof Error
-            ? otpError.message
-            : "An unknown error occurred.";
-        toast({
-          variant: "destructive",
-          title: "OTP Execution Error",
-          description: errorMessage,
-        });
-        setIsLoading(false);
-      }
+        }
+      };
+
+      window.addEventListener("message", handleLoginMessage);
+
+      // 6. Call verifyOtp to show the UI
+      sdk.verifyOtp();
     } catch (authError) {
       toast({
         variant: "destructive",
@@ -345,8 +242,46 @@ export default function SignInPage() {
       setIsLoading(false);
       console.error("handleEmailAuth error:", authError);
     }
-    console.log("handleEmailAuth finished");
   };
+
+  useEffect(() => {
+    if (!pendingWalletUserToken || !pendingWalletEmail) return;
+    (async () => {
+      setIsLoading(true);
+      try {
+        // Fetch wallet address using backend API (to keep API key secret)
+        const walletListRes = await fetch("/api/circle/wallets/list", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userToken: pendingWalletUserToken }),
+        });
+        if (!walletListRes.ok)
+          throw new Error((await walletListRes.json()).error);
+        const { wallets } = await walletListRes.json();
+        const walletAddress = wallets?.[0]?.address;
+        toast({
+          title: "Wallet Created!",
+          description: "Redirecting to account setup...",
+        });
+        router.push(
+          `/account-type-selection?email=${encodeURIComponent(
+            pendingWalletEmail
+          )}&wallet=${walletAddress || ""}`
+        );
+      } catch (fetchError) {
+        console.error("[App] Error fetching wallet address:", fetchError);
+        toast({
+          variant: "destructive",
+          title: "Failed to fetch wallet address",
+          description: (fetchError as Error).message,
+        });
+      } finally {
+        setIsLoading(false);
+        setPendingWalletUserToken(null);
+        setPendingWalletEmail(null);
+      }
+    })();
+  }, [pendingWalletUserToken, pendingWalletEmail]);
 
   return (
     <div className="flex flex-col items-center min-h-screen bg-gray-50 dark:bg-gray-900 p-4">

@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 export async function GET() {
   try {
     const appId = process.env.NEXT_PUBLIC_CIRCLE_APP_ID;
-    
+
     if (!appId) {
       return NextResponse.json(
         { error: "App ID not configured" },
@@ -19,4 +19,4 @@ export async function GET() {
       { status: 500 }
     );
   }
-} 
+}

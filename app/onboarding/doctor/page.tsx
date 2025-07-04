@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { motion, AnimatePresence } from "framer-motion"
-import { useSearchParams, useRouter } from "next/navigation"
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   ArrowRight,
   ArrowLeft,
@@ -15,22 +15,29 @@ import {
   Globe,
   Shield,
   AlertCircle,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent } from "@/components/ui/card"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Label } from "@/components/ui/label"
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 
 export default function DoctorOnboardingPage() {
-  const searchParams = useSearchParams()
-  const router = useRouter()
-  const email = searchParams.get("email") || ""
-  const [currentStep, setCurrentStep] = useState(1)
-  const [errors, setErrors] = useState<Record<string, string>>({})
-  const [isSubmitting, setIsSubmitting] = useState(false)
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const email = searchParams.get("email") || "";
+  const wallet = searchParams.get("wallet");
+  const [currentStep, setCurrentStep] = useState(1);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -55,58 +62,63 @@ export default function DoctorOnboardingPage() {
       saturday: false,
       sunday: false,
     },
-  })
+  });
 
-  const totalSteps = 4
+  const totalSteps = 4;
 
   const validateStep = () => {
-    const newErrors: Record<string, string> = {}
+    const newErrors: Record<string, string> = {};
 
     if (currentStep === 1) {
-      if (!formData.firstName.trim()) newErrors.firstName = "First name is required"
-      if (!formData.lastName.trim()) newErrors.lastName = "Last name is required"
-      if (!formData.phone.trim()) newErrors.phone = "Phone number is required"
-      if (!formData.country) newErrors.country = "Country is required"
+      if (!formData.firstName.trim())
+        newErrors.firstName = "First name is required";
+      if (!formData.lastName.trim())
+        newErrors.lastName = "Last name is required";
+      if (!formData.phone.trim()) newErrors.phone = "Phone number is required";
+      if (!formData.country) newErrors.country = "Country is required";
     }
 
     if (currentStep === 2) {
-      if (!formData.specialty) newErrors.specialty = "Specialty is required"
-      if (!formData.licenseNumber.trim()) newErrors.licenseNumber = "License number is required"
-      if (!formData.yearsOfExperience) newErrors.yearsOfExperience = "Years of experience is required"
-      if (!formData.consultationFee) newErrors.consultationFee = "Consultation fee is required"
+      if (!formData.specialty) newErrors.specialty = "Specialty is required";
+      if (!formData.licenseNumber.trim())
+        newErrors.licenseNumber = "License number is required";
+      if (!formData.yearsOfExperience)
+        newErrors.yearsOfExperience = "Years of experience is required";
+      if (!formData.consultationFee)
+        newErrors.consultationFee = "Consultation fee is required";
     }
 
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
-  }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
   const updateFormData = (field: string, value: any) => {
     setFormData((prev) => ({
       ...prev,
       [field]: value,
-    }))
+    }));
     if (errors[field]) {
-      setErrors((prev) => ({ ...prev, [field]: "" }))
+      setErrors((prev) => ({ ...prev, [field]: "" }));
     }
-  }
+  };
 
   const nextStep = () => {
     if (validateStep() && currentStep < totalSteps) {
-      setCurrentStep(currentStep + 1)
-      setErrors({})
+      setCurrentStep(currentStep + 1);
+      setErrors({});
     }
-  }
+  };
 
   const prevStep = () => {
     if (currentStep > 1) {
-      setCurrentStep(currentStep - 1)
+      setCurrentStep(currentStep - 1);
     }
-  }
+  };
 
   const handleSubmit = async () => {
-    if (!validateStep()) return
+    if (!validateStep()) return;
 
-    setIsSubmitting(true)
+    setIsSubmitting(true);
     try {
       // Create doctor profile
       const userData = {
@@ -126,21 +138,23 @@ export default function DoctorOnboardingPage() {
         consultationFee: formData.consultationFee,
         languages: formData.languages,
         availability: formData.availability,
-      }
+      };
 
-      console.log("Creating doctor profile:", userData)
+      console.log("Creating doctor profile:", userData);
 
       // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 2000))
+      await new Promise((resolve) => setTimeout(resolve, 2000));
 
       // Redirect to doctor dashboard
-      router.push("/doctor-dashboard")
+      router.push("/doctor-dashboard");
     } catch (error: any) {
-      setErrors({ submit: error.message || "Profile creation failed. Please try again." })
+      setErrors({
+        submit: error.message || "Profile creation failed. Please try again.",
+      });
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
-  }
+  };
 
   const countries = [
     "Nigeria",
@@ -153,7 +167,7 @@ export default function DoctorOnboardingPage() {
     "United Kingdom",
     "Canada",
     "Australia",
-  ]
+  ];
 
   const specialties = [
     "General Practice",
@@ -168,7 +182,7 @@ export default function DoctorOnboardingPage() {
     "Endocrinology",
     "Gastroenterology",
     "Pulmonology",
-  ]
+  ];
 
   const languages = [
     "English",
@@ -181,11 +195,13 @@ export default function DoctorOnboardingPage() {
     "Yoruba",
     "Igbo",
     "Amharic",
-  ]
+  ];
 
   const getFieldError = (field: string) => {
-    return errors[field] ? <p className="text-sm text-red-600 mt-1">{errors[field]}</p> : null
-  }
+    return errors[field] ? (
+      <p className="text-sm text-red-600 mt-1">{errors[field]}</p>
+    ) : null;
+  };
 
   const renderStep = () => {
     switch (currentStep) {
@@ -201,8 +217,12 @@ export default function DoctorOnboardingPage() {
               <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <User className="w-8 h-8 text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Personal Information</h2>
-              <p className="text-gray-600 dark:text-gray-300">Let's start with your basic details</p>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                Personal Information
+              </h2>
+              <p className="text-gray-600 dark:text-gray-300">
+                Let's start with your basic details
+              </p>
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
@@ -236,7 +256,13 @@ export default function DoctorOnboardingPage() {
 
             <div>
               <Label htmlFor="email">Email Address</Label>
-              <Input id="email" type="email" value={formData.email} disabled className="bg-gray-50 dark:bg-gray-700" />
+              <Input
+                id="email"
+                type="email"
+                value={formData.email}
+                disabled
+                className="bg-gray-50 dark:bg-gray-700"
+              />
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
@@ -257,8 +283,13 @@ export default function DoctorOnboardingPage() {
                 <Label htmlFor="country">
                   Country <span className="text-red-500">*</span>
                 </Label>
-                <Select value={formData.country} onValueChange={(value) => updateFormData("country", value)}>
-                  <SelectTrigger className={errors.country ? "border-red-500" : ""}>
+                <Select
+                  value={formData.country}
+                  onValueChange={(value) => updateFormData("country", value)}
+                >
+                  <SelectTrigger
+                    className={errors.country ? "border-red-500" : ""}
+                  >
                     <SelectValue placeholder="Select your country" />
                   </SelectTrigger>
                   <SelectContent>
@@ -283,7 +314,7 @@ export default function DoctorOnboardingPage() {
               />
             </div>
           </motion.div>
-        )
+        );
 
       case 2:
         return (
@@ -297,8 +328,12 @@ export default function DoctorOnboardingPage() {
               <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Stethoscope className="w-8 h-8 text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Professional Information</h2>
-              <p className="text-gray-600 dark:text-gray-300">Tell us about your medical expertise</p>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                Professional Information
+              </h2>
+              <p className="text-gray-600 dark:text-gray-300">
+                Tell us about your medical expertise
+              </p>
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
@@ -306,8 +341,13 @@ export default function DoctorOnboardingPage() {
                 <Label htmlFor="specialty">
                   Medical Specialty <span className="text-red-500">*</span>
                 </Label>
-                <Select value={formData.specialty} onValueChange={(value) => updateFormData("specialty", value)}>
-                  <SelectTrigger className={errors.specialty ? "border-red-500" : ""}>
+                <Select
+                  value={formData.specialty}
+                  onValueChange={(value) => updateFormData("specialty", value)}
+                >
+                  <SelectTrigger
+                    className={errors.specialty ? "border-red-500" : ""}
+                  >
                     <SelectValue placeholder="Select your specialty" />
                   </SelectTrigger>
                   <SelectContent>
@@ -328,7 +368,9 @@ export default function DoctorOnboardingPage() {
                   id="yearsOfExperience"
                   type="number"
                   value={formData.yearsOfExperience}
-                  onChange={(e) => updateFormData("yearsOfExperience", e.target.value)}
+                  onChange={(e) =>
+                    updateFormData("yearsOfExperience", e.target.value)
+                  }
                   placeholder="e.g., 10"
                   className={errors.yearsOfExperience ? "border-red-500" : ""}
                 />
@@ -343,7 +385,9 @@ export default function DoctorOnboardingPage() {
               <Input
                 id="licenseNumber"
                 value={formData.licenseNumber}
-                onChange={(e) => updateFormData("licenseNumber", e.target.value)}
+                onChange={(e) =>
+                  updateFormData("licenseNumber", e.target.value)
+                }
                 placeholder="Enter your medical license number"
                 className={errors.licenseNumber ? "border-red-500" : ""}
               />
@@ -362,11 +406,15 @@ export default function DoctorOnboardingPage() {
             </div>
 
             <div>
-              <Label htmlFor="hospitalAffiliation">Hospital/Clinic Affiliation</Label>
+              <Label htmlFor="hospitalAffiliation">
+                Hospital/Clinic Affiliation
+              </Label>
               <Input
                 id="hospitalAffiliation"
                 value={formData.hospitalAffiliation}
-                onChange={(e) => updateFormData("hospitalAffiliation", e.target.value)}
+                onChange={(e) =>
+                  updateFormData("hospitalAffiliation", e.target.value)
+                }
                 placeholder="Current hospital or clinic affiliation"
               />
             </div>
@@ -380,14 +428,16 @@ export default function DoctorOnboardingPage() {
                 type="number"
                 step="0.01"
                 value={formData.consultationFee}
-                onChange={(e) => updateFormData("consultationFee", e.target.value)}
+                onChange={(e) =>
+                  updateFormData("consultationFee", e.target.value)
+                }
                 placeholder="e.g., 25.00"
                 className={errors.consultationFee ? "border-red-500" : ""}
               />
               {getFieldError("consultationFee")}
             </div>
           </motion.div>
-        )
+        );
 
       case 3:
         return (
@@ -401,8 +451,12 @@ export default function DoctorOnboardingPage() {
               <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Globe className="w-8 h-8 text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Profile & Availability</h2>
-              <p className="text-gray-600 dark:text-gray-300">Complete your professional profile</p>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                Profile & Availability
+              </h2>
+              <p className="text-gray-600 dark:text-gray-300">
+                Complete your professional profile
+              </p>
             </div>
 
             <div>
@@ -426,12 +480,15 @@ export default function DoctorOnboardingPage() {
                       checked={formData.languages.includes(language)}
                       onCheckedChange={(checked) => {
                         if (checked) {
-                          updateFormData("languages", [...formData.languages, language])
+                          updateFormData("languages", [
+                            ...formData.languages,
+                            language,
+                          ]);
                         } else {
                           updateFormData(
                             "languages",
-                            formData.languages.filter((l) => l !== language),
-                          )
+                            formData.languages.filter((l) => l !== language)
+                          );
                         }
                       }}
                     />
@@ -450,12 +507,16 @@ export default function DoctorOnboardingPage() {
                   <div key={day} className="flex items-center space-x-2">
                     <Checkbox
                       id={day}
-                      checked={formData.availability[day as keyof typeof formData.availability]}
+                      checked={
+                        formData.availability[
+                          day as keyof typeof formData.availability
+                        ]
+                      }
                       onCheckedChange={(checked) => {
                         updateFormData("availability", {
                           ...formData.availability,
                           [day]: checked,
-                        })
+                        });
                       }}
                     />
                     <Label htmlFor={day} className="text-sm capitalize">
@@ -466,7 +527,7 @@ export default function DoctorOnboardingPage() {
               </div>
             </div>
           </motion.div>
-        )
+        );
 
       case 4:
         return (
@@ -480,14 +541,20 @@ export default function DoctorOnboardingPage() {
               <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
                 <FileText className="w-8 h-8 text-white" />
               </div>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Document Verification</h2>
-              <p className="text-gray-600 dark:text-gray-300">Upload required documents for verification</p>
+              <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                Document Verification
+              </h2>
+              <p className="text-gray-600 dark:text-gray-300">
+                Upload required documents for verification
+              </p>
             </div>
 
             <div className="space-y-4">
               <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center">
                 <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="font-medium text-gray-900 dark:text-white mb-2">Medical License</h3>
+                <h3 className="font-medium text-gray-900 dark:text-white mb-2">
+                  Medical License
+                </h3>
                 <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
                   Upload a clear photo of your medical license
                 </p>
@@ -496,14 +563,20 @@ export default function DoctorOnboardingPage() {
 
               <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center">
                 <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="font-medium text-gray-900 dark:text-white mb-2">Medical Degree</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">Upload your medical degree certificate</p>
+                <h3 className="font-medium text-gray-900 dark:text-white mb-2">
+                  Medical Degree
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+                  Upload your medical degree certificate
+                </p>
                 <Button variant="outline">Choose File</Button>
               </div>
 
               <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center">
                 <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="font-medium text-gray-900 dark:text-white mb-2">Professional Photo</h3>
+                <h3 className="font-medium text-gray-900 dark:text-white mb-2">
+                  Professional Photo
+                </h3>
                 <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
                   Upload a professional headshot for your profile
                 </p>
@@ -515,10 +588,13 @@ export default function DoctorOnboardingPage() {
               <div className="flex items-start space-x-3">
                 <Shield className="w-5 h-5 text-amber-600 mt-0.5" />
                 <div>
-                  <h4 className="font-medium text-amber-800 dark:text-amber-300">Verification Process</h4>
+                  <h4 className="font-medium text-amber-800 dark:text-amber-300">
+                    Verification Process
+                  </h4>
                   <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
-                    Your documents will be reviewed by our medical board within 24-48 hours. You'll receive an email
-                    notification once verified.
+                    Your documents will be reviewed by our medical board within
+                    24-48 hours. You'll receive an email notification once
+                    verified.
                   </p>
                 </div>
               </div>
@@ -542,12 +618,12 @@ export default function DoctorOnboardingPage() {
               </Label>
             </div>
           </motion.div>
-        )
+        );
 
       default:
-        return null
+        return null;
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -558,16 +634,25 @@ export default function DoctorOnboardingPage() {
             <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-green-600 rounded-lg flex items-center justify-center">
               <Heart className="w-5 h-5 text-white" />
             </div>
-            <span className="text-xl font-bold text-gray-900 dark:text-white">teleHealthSol</span>
+            <span className="text-xl font-bold text-gray-900 dark:text-white">
+              teleHealthSol
+            </span>
           </div>
           <div className="flex items-center space-x-2">
             <Stethoscope className="w-5 h-5 text-blue-600" />
-            <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Doctor Registration</span>
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-300">
+              Doctor Registration
+            </span>
           </div>
         </div>
       </header>
 
       <div className="container mx-auto px-4 py-8 max-w-2xl">
+        {wallet && (
+          <div className="mb-4 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-900 dark:text-green-300 text-sm break-all">
+            <strong>Wallet Address:</strong> {wallet}
+          </div>
+        )}
         {/* Progress Bar */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-2">
@@ -598,7 +683,9 @@ export default function DoctorOnboardingPage() {
                 className="mb-6 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center space-x-2"
               >
                 <AlertCircle className="w-4 h-4 text-red-600" />
-                <span className="text-sm text-red-700 dark:text-red-400">{errors.submit}</span>
+                <span className="text-sm text-red-700 dark:text-red-400">
+                  {errors.submit}
+                </span>
               </motion.div>
             )}
 
@@ -606,7 +693,12 @@ export default function DoctorOnboardingPage() {
 
             {/* Navigation Buttons */}
             <div className="flex justify-between mt-8">
-              <Button variant="outline" onClick={prevStep} disabled={currentStep === 1} className="flex items-center">
+              <Button
+                variant="outline"
+                onClick={prevStep}
+                disabled={currentStep === 1}
+                className="flex items-center"
+              >
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Previous
               </Button>
@@ -643,5 +735,5 @@ export default function DoctorOnboardingPage() {
         </Card>
       </div>
     </div>
-  )
+  );
 }

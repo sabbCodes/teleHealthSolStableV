@@ -31,6 +31,9 @@ export default function PatientOnboardingPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const email = searchParams.get("email") || "";
+  const wallet = searchParams.get("wallet");
+  const userToken = searchParams.get("userToken");
+  const appId = searchParams.get("appId");
   const [currentStep, setCurrentStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -502,12 +505,18 @@ export default function PatientOnboardingPage() {
               </p>
             </div>
 
-            <WalletSetup
-              email={formData.email}
-              userId={`user_${formData.email.replace(/[^a-zA-Z0-9]/g, "_")}`}
-              onComplete={handleWalletSetupComplete}
-              onError={handleWalletSetupError}
-            />
+            {userToken && appId ? (
+              <WalletSetup
+                userToken={userToken}
+                appId={appId}
+                onComplete={handleWalletSetupComplete}
+                onError={handleWalletSetupError}
+              />
+            ) : (
+              <div className="text-red-600 text-center">
+                Missing wallet setup parameters.
+              </div>
+            )}
           </motion.div>
         );
 
@@ -539,6 +548,11 @@ export default function PatientOnboardingPage() {
       </header>
 
       <div className="container mx-auto px-4 py-8 max-w-2xl">
+        {wallet && (
+          <div className="mb-4 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-900 dark:text-green-300 text-sm break-all">
+            <strong>Wallet Address:</strong> {wallet}
+          </div>
+        )}
         {/* Progress Bar */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-2">

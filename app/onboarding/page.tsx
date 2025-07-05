@@ -11,6 +11,9 @@ import {
   Heart,
   Users,
   AlertCircle,
+  Lock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +28,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import { WalletSetup } from "../../components/wallet-setup";
+import Link from "next/link";
 
 export default function PatientOnboardingPage() {
   const searchParams = useSearchParams();
@@ -50,7 +53,14 @@ export default function PatientOnboardingPage() {
     medicalHistory: "",
     allergies: "",
     currentMedications: "",
+    password: "",
+    confirmPassword: "",
+    preferredLanguage: "",
+    timezone: "",
+    address: "",
   });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const totalSteps = 4;
 
@@ -67,6 +77,11 @@ export default function PatientOnboardingPage() {
       if (!formData.dateOfBirth)
         newErrors.dateOfBirth = "Date of birth is required";
       if (!formData.gender) newErrors.gender = "Gender is required";
+      if (!formData.password) newErrors.password = "Password is required";
+      if (formData.password.length < 8)
+        newErrors.password = "Password must be at least 8 characters long";
+      if (formData.password !== formData.confirmPassword)
+        newErrors.confirmPassword = "Passwords do not match";
     }
 
     setErrors(newErrors);
@@ -116,6 +131,9 @@ export default function PatientOnboardingPage() {
         medicalHistory: formData.medicalHistory,
         allergies: formData.allergies,
         currentMedications: formData.currentMedications,
+        preferredLanguage: formData.preferredLanguage,
+        timezone: formData.timezone,
+        address: formData.address,
       };
 
       console.log("Creating patient profile:", userData);
@@ -123,8 +141,8 @@ export default function PatientOnboardingPage() {
       // Simulate API call
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      // Move to wallet setup step instead of redirecting
-      setCurrentStep(4);
+      // Redirect to dashboard
+      router.push("/dashboard");
     } catch (error: any) {
       setErrors({
         submit: error.message || "Profile creation failed. Please try again.",
@@ -132,16 +150,6 @@ export default function PatientOnboardingPage() {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleWalletSetupComplete = () => {
-    // Wallet setup completed successfully
-    router.push("/dashboard");
-  };
-
-  const handleWalletSetupError = (error: Error) => {
-    console.error("Wallet setup error:", error);
-    // Handle error appropriately
   };
 
   const countries = [
@@ -223,6 +231,79 @@ export default function PatientOnboardingPage() {
                 disabled
                 className="bg-gray-50 dark:bg-gray-700"
               />
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="password">
+                  Password <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Create a password"
+                    className="pl-10 pr-10"
+                    required
+                    value={formData.password}
+                    onChange={(e) => updateFormData("password", e.target.value)}
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    tabIndex={0}
+                    aria-label={
+                      showPassword ? "Hide password" : "Show password"
+                    }
+                    onClick={() => setShowPassword((v) => !v)}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+                {getFieldError("password")}
+              </div>
+              <div>
+                <Label htmlFor="confirmPassword">
+                  Confirm Password <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                  <Input
+                    id="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    placeholder="Confirm your password"
+                    className="pl-10 pr-10"
+                    required
+                    value={formData.confirmPassword}
+                    onChange={(e) =>
+                      updateFormData("confirmPassword", e.target.value)
+                    }
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    tabIndex={0}
+                    aria-label={
+                      showConfirmPassword ? "Hide password" : "Show password"
+                    }
+                    onClick={() => setShowConfirmPassword((v) => !v)}
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+                {getFieldError("confirmPassword")}
+              </div>
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
@@ -495,28 +576,184 @@ export default function PatientOnboardingPage() {
           >
             <div className="text-center mb-8">
               <div className="w-16 h-16 bg-gradient-to-r from-blue-600 to-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                <CheckCircle className="w-8 h-8 text-white" />
+                <User className="w-8 h-8 text-white" />
               </div>
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                Wallet Setup
+                Complete Your Profile
               </h2>
               <p className="text-gray-600 dark:text-gray-300">
-                Set up your wallet to start using teleHealthSol
+                Add your profile picture and finalize your account
               </p>
             </div>
 
-            {userToken && appId ? (
-              <WalletSetup
-                userToken={userToken}
-                appId={appId}
-                onComplete={handleWalletSetupComplete}
-                onError={handleWalletSetupError}
-              />
-            ) : (
-              <div className="text-red-600 text-center">
-                Missing wallet setup parameters.
+            {/* Profile Image Upload */}
+            <div className="space-y-4">
+              <Label className="text-base font-semibold">Profile Picture</Label>
+              <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center">
+                <div className="w-24 h-24 bg-gray-100 dark:bg-gray-700 rounded-full mx-auto mb-4 flex items-center justify-center">
+                  <User className="w-12 h-12 text-gray-400" />
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+                  Upload a clear photo of yourself for your profile
+                </p>
+                <Button variant="outline" className="w-full">
+                  Choose Photo
+                </Button>
               </div>
-            )}
+            </div>
+
+            {/* Additional Personal Details */}
+            <div className="space-y-4">
+              <Label className="text-base font-semibold">
+                Additional Information
+              </Label>
+
+              <div>
+                <Label htmlFor="emergencyContact">Emergency Contact</Label>
+                <Input
+                  id="emergencyContact"
+                  value={formData.emergencyContact}
+                  onChange={(e) =>
+                    updateFormData("emergencyContact", e.target.value)
+                  }
+                  placeholder="Name and phone number"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="medicalHistory">Medical History</Label>
+                <Textarea
+                  id="medicalHistory"
+                  value={formData.medicalHistory}
+                  onChange={(e) =>
+                    updateFormData("medicalHistory", e.target.value)
+                  }
+                  placeholder="Please describe any significant medical conditions, surgeries, or family history"
+                  className="min-h-[100px]"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="allergies">Allergies</Label>
+                <Textarea
+                  id="allergies"
+                  value={formData.allergies}
+                  onChange={(e) => updateFormData("allergies", e.target.value)}
+                  placeholder="List any known allergies (medications, food, environmental)"
+                  className="min-h-[80px]"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="currentMedications">Current Medications</Label>
+                <Textarea
+                  id="currentMedications"
+                  value={formData.currentMedications}
+                  onChange={(e) =>
+                    updateFormData("currentMedications", e.target.value)
+                  }
+                  placeholder="List all medications you're currently taking"
+                  className="min-h-[80px]"
+                />
+              </div>
+            </div>
+
+            {/* Preferences */}
+            <div className="space-y-4">
+              <Label className="text-base font-semibold">Preferences</Label>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="preferredLanguage">Preferred Language</Label>
+                  <Select
+                    value={formData.preferredLanguage || ""}
+                    onValueChange={(value) =>
+                      updateFormData("preferredLanguage", value)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select language" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="english">English</SelectItem>
+                      <SelectItem value="french">French</SelectItem>
+                      <SelectItem value="spanish">Spanish</SelectItem>
+                      <SelectItem value="arabic">Arabic</SelectItem>
+                      <SelectItem value="yoruba">Yoruba</SelectItem>
+                      <SelectItem value="igbo">Igbo</SelectItem>
+                      <SelectItem value="hausa">Hausa</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="timezone">Timezone</Label>
+                  <Select
+                    value={formData.timezone || ""}
+                    onValueChange={(value) => updateFormData("timezone", value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select timezone" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="WAT">
+                        West Africa Time (WAT)
+                      </SelectItem>
+                      <SelectItem value="GMT">
+                        Greenwich Mean Time (GMT)
+                      </SelectItem>
+                      <SelectItem value="EST">
+                        Eastern Standard Time (EST)
+                      </SelectItem>
+                      <SelectItem value="PST">
+                        Pacific Standard Time (PST)
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="address">Full Address</Label>
+                <Textarea
+                  id="address"
+                  value={formData.address || ""}
+                  onChange={(e) => updateFormData("address", e.target.value)}
+                  placeholder="Enter your complete address"
+                  className="min-h-[80px]"
+                />
+              </div>
+            </div>
+
+            {/* Terms and Conditions */}
+            <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+              <div className="flex items-start space-x-3">
+                <CheckCircle className="w-5 h-5 text-blue-600 mt-0.5" />
+                <div>
+                  <h4 className="font-medium text-blue-800 dark:text-blue-300">
+                    Almost Done!
+                  </h4>
+                  <p className="text-sm text-blue-700 dark:text-blue-400 mt-1">
+                    Your profile will be complete once you finish this step. You
+                    can always update your information later.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <Checkbox id="terms" />
+              <Label htmlFor="terms" className="text-sm">
+                I agree to the{" "}
+                <a href="#" className="text-blue-600 hover:underline">
+                  Terms of Service
+                </a>{" "}
+                and{" "}
+                <a href="#" className="text-blue-600 hover:underline">
+                  Privacy Policy
+                </a>
+              </Label>
+            </div>
           </motion.div>
         );
 
@@ -530,14 +767,14 @@ export default function PatientOnboardingPage() {
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 border-b">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-2">
+          <Link href="/" className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-green-600 rounded-lg flex items-center justify-center">
               <Heart className="w-5 h-5 text-white" />
             </div>
             <span className="text-xl font-bold text-gray-900 dark:text-white">
               teleHealthSol
             </span>
-          </div>
+          </Link>
           <div className="flex items-center space-x-2">
             <Users className="w-5 h-5 text-blue-600" />
             <span className="text-sm font-medium text-gray-600 dark:text-gray-300">

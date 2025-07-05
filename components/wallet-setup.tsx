@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 interface WalletSetupProps {
   userToken: string;
   appId: string;
+  email?: string;
   onComplete: () => void;
   onError: (error: Error) => void;
 }
@@ -13,6 +14,7 @@ interface WalletSetupProps {
 export function WalletSetup({
   userToken,
   appId,
+  email,
   onComplete,
   onError,
 }: WalletSetupProps) {
@@ -21,12 +23,23 @@ export function WalletSetup({
   useEffect(() => {
     const setupWallet = async () => {
       try {
+        console.log("[WalletSetup] Starting wallet setup with:", {
+          userToken: userToken.substring(0, 10) + "...",
+          appId,
+          email,
+        });
+
         const initResponse = await fetch("/api/circle/wallets/init", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userToken }),
+          body: JSON.stringify({
+            userToken,
+            email: email || "unknown@example.com", // Fallback if email not provided
+          }),
         });
         const initData = await initResponse.json();
+        console.log("[WalletSetup] Init response:", initData);
+
         if (!initResponse.ok) {
           if (initData.details?.message?.includes("already been initialized")) {
             toast({
@@ -42,14 +55,35 @@ export function WalletSetup({
               "Failed to initialize wallet setup"
           );
         }
-        const { challengeId } = initData;
+
+        const {
+          challengeId,
+          userToken: newUserToken,
+          encryptionKey: newEncryptionKey,
+        } = initData;
+
+        // Use the new user token and encryption key from the backend
+        const finalUserToken = newUserToken || userToken;
+        const finalEncryptionKey = newEncryptionKey || "default-key";
+
+        console.log("[WalletSetup] About to execute challengeId:", challengeId);
+
         const circle = new W3SSdk({ appSettings: { appId } });
+
+        // Set authentication with the new tokens
+        circle.setAuthentication({
+          userToken: finalUserToken,
+          encryptionKey: finalEncryptionKey,
+        });
+
         circle.execute(challengeId, (error, result) => {
           if (error) {
+            console.error("[WalletSetup] Execute error:", error);
             onError(error as Error);
             return;
           }
           if (result) {
+            console.log("[WalletSetup] Execute success:", result);
             toast({
               title: "Wallet Created!",
               description: "Your secure wallet has been successfully set up.",
@@ -58,11 +92,12 @@ export function WalletSetup({
           }
         });
       } catch (error) {
+        console.error("[WalletSetup] Setup error:", error);
         onError(error as Error);
       }
     };
     setupWallet();
-  }, [userToken, appId, onComplete, onError, toast]);
+  }, [userToken, appId, email, onComplete, onError, toast]);
 
   return (
     <div className="text-center">

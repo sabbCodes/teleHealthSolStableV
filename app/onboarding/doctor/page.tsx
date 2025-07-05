@@ -15,6 +15,9 @@ import {
   Globe,
   Shield,
   AlertCircle,
+  Lock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,6 +32,7 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import Link from "next/link";
 
 export default function DoctorOnboardingPage() {
   const searchParams = useSearchParams();
@@ -62,7 +66,11 @@ export default function DoctorOnboardingPage() {
       saturday: false,
       sunday: false,
     },
+    password: "",
+    confirmPassword: "",
   });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const totalSteps = 4;
 
@@ -76,6 +84,11 @@ export default function DoctorOnboardingPage() {
         newErrors.lastName = "Last name is required";
       if (!formData.phone.trim()) newErrors.phone = "Phone number is required";
       if (!formData.country) newErrors.country = "Country is required";
+      if (!formData.password) newErrors.password = "Password is required";
+      if (formData.password.length < 8)
+        newErrors.password = "Password must be at least 8 characters long";
+      if (formData.password !== formData.confirmPassword)
+        newErrors.confirmPassword = "Passwords do not match";
     }
 
     if (currentStep === 2) {
@@ -263,6 +276,79 @@ export default function DoctorOnboardingPage() {
                 disabled
                 className="bg-gray-50 dark:bg-gray-700"
               />
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="password">
+                  Password <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                  <Input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    placeholder="Create a password"
+                    className="pl-10 pr-10"
+                    required
+                    value={formData.password}
+                    onChange={(e) => updateFormData("password", e.target.value)}
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    tabIndex={0}
+                    aria-label={
+                      showPassword ? "Hide password" : "Show password"
+                    }
+                    onClick={() => setShowPassword((v) => !v)}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+                {getFieldError("password")}
+              </div>
+              <div>
+                <Label htmlFor="confirmPassword">
+                  Confirm Password <span className="text-red-500">*</span>
+                </Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                  <Input
+                    id="confirmPassword"
+                    type={showConfirmPassword ? "text" : "password"}
+                    placeholder="Confirm your password"
+                    className="pl-10 pr-10"
+                    required
+                    value={formData.confirmPassword}
+                    onChange={(e) =>
+                      updateFormData("confirmPassword", e.target.value)
+                    }
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    tabIndex={0}
+                    aria-label={
+                      showConfirmPassword ? "Hide password" : "Show password"
+                    }
+                    onClick={() => setShowConfirmPassword((v) => !v)}
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="w-5 h-5" />
+                    ) : (
+                      <Eye className="w-5 h-5" />
+                    )}
+                  </button>
+                </div>
+                {getFieldError("confirmPassword")}
+              </div>
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
@@ -630,14 +716,14 @@ export default function DoctorOnboardingPage() {
       {/* Header */}
       <header className="bg-white dark:bg-gray-800 border-b">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-2">
+          <Link href="/" className="flex items-center space-x-2">
             <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-green-600 rounded-lg flex items-center justify-center">
               <Heart className="w-5 h-5 text-white" />
             </div>
             <span className="text-xl font-bold text-gray-900 dark:text-white">
               teleHealthSol
             </span>
-          </div>
+          </Link>
           <div className="flex items-center space-x-2">
             <Stethoscope className="w-5 h-5 text-blue-600" />
             <span className="text-sm font-medium text-gray-600 dark:text-gray-300">

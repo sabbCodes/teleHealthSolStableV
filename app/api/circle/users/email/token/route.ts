@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { v4 as uuidv4 } from "uuid";
 
 export async function POST(req: NextRequest) {
-  const { email, deviceId } = await req.json();
+  const { email, idempotencyKey, deviceId } = await req.json();
   if (!email) {
     return NextResponse.json({ error: "Email is required" }, { status: 400 });
   }
 
   const payload = {
-    idempotencyKey: uuidv4(),
+    idempotencyKey: idempotencyKey || uuidv4(),
     email,
     ...(deviceId && { deviceId }), // Only include deviceId if it exists
   };

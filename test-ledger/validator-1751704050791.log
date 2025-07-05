@@ -1,0 +1,69 @@
+[0m[38;5;8m[[0m2025-07-05T08:27:30.796408811Z [0m[32mINFO [0m solana_test_validator[0m[38;5;8m][0m agave-validator 2.1.20 (src:89985de3; feat:1416569292, client:Agave)
+[0m[38;5;8m[[0m2025-07-05T08:27:30.798095479Z [0m[32mINFO [0m solana_test_validator[0m[38;5;8m][0m Starting validator with: ArgsOs {
+        inner: [
+            "solana-test-validator",
+        ],
+    }
+[0m[38;5;8m[[0m2025-07-05T08:27:30.799490606Z [0m[33mWARN [0m solana_perf[0m[38;5;8m][0m CUDA is disabled
+[0m[38;5;8m[[0m2025-07-05T08:27:30.799570885Z [0m[32mINFO [0m solana_perf[0m[38;5;8m][0m AVX detected
+[0m[38;5;8m[[0m2025-07-05T08:27:30.799588629Z [0m[32mINFO [0m solana_perf[0m[38;5;8m][0m AVX2 detected
+[0m[38;5;8m[[0m2025-07-05T08:27:30.813282424Z [0m[32mINFO [0m solana_faucet::faucet[0m[38;5;8m][0m Faucet started. Listening on: 0.0.0.0:9900
+[0m[38;5;8m[[0m2025-07-05T08:27:30.813356115Z [0m[32mINFO [0m solana_faucet::faucet[0m[38;5;8m][0m Faucet account address: 8rQg3M4zhSJUvFZr2xGVLy9AcipAnFBN3TZNr7yYDatj
+[0m[38;5;8m[[0m2025-07-05T08:27:30.821164220Z [0m[32mINFO [0m agave_validator::admin_rpc_service[0m[38;5;8m][0m started admin rpc service!
+[0m[38;5;8m[[0m2025-07-05T08:27:30.847927573Z [0m[32mINFO [0m solana_ledger::blockstore[0m[38;5;8m][0m Maximum open file descriptors: 1048576
+[0m[38;5;8m[[0m2025-07-05T08:27:30.848005139Z [0m[32mINFO [0m solana_ledger::blockstore[0m[38;5;8m][0m Opening blockstore at "test-ledger/rocksdb"
+[0m[38;5;8m[[0m2025-07-05T08:27:30.854164642Z [0m[33mWARN [0m solana_ledger::blockstore_db[0m[38;5;8m][0m Unable to detect Rocks columns: Error { message: "IO error: No such file or directory: While opening a file for sequentially reading: test-ledger/rocksdb/CURRENT: No such file or directory" }
+[0m[38;5;8m[[0m2025-07-05T08:27:31.187319673Z [0m[32mINFO [0m solana_ledger::blockstore[0m[38;5;8m][0m Opening blockstore done; blockstore open took 339ms
+[0m[38;5;8m[[0m2025-07-05T08:27:31.216550023Z [0m[32mINFO [0m solana_metrics::metrics[0m[38;5;8m][0m metrics disabled: environment variable not found
+[0m[38;5;8m[[0m2025-07-05T08:27:31.217134526Z [0m[32mINFO [0m solana_metrics::metrics[0m[38;5;8m][0m datapoint: shred_insert_is_full slot=0i total_time_ms=3i last_index=31i num_repaired=0i num_recovered=0i
+[0m[38;5;8m[[0m2025-07-05T08:27:31.423323496Z [0m[32mINFO [0m solana_accounts_db::hardened_unpack[0m[38;5;8m][0m Extracting "test-ledger/genesis.tar.bz2"...
+[0m[38;5;8m[[0m2025-07-05T08:27:31.489216312Z [0m[32mINFO [0m solana_accounts_db::hardened_unpack[0m[38;5;8m][0m unpacked 1 entries total
+[0m[38;5;8m[[0m2025-07-05T08:27:31.489265544Z [0m[32mINFO [0m solana_accounts_db::hardened_unpack[0m[38;5;8m][0m Extracted "test-ledger/genesis.tar.bz2" in 65.917289ms
+[0m[38;5;8m[[0m2025-07-05T08:27:31.492582116Z [0m[33mWARN [0m solana_accounts_db::utils[0m[38;5;8m][0m Failed to delete contents of 'test-ledger/accounts': could not read dir: No such file or directory (os error 2)
+[0m[38;5;8m[[0m2025-07-05T08:27:31.493700541Z [0m[32mINFO [0m solana_core::validator[0m[38;5;8m][0m identity pubkey: J4zcFcFMkxWnBMBsSHGA7MyfusMWvMbvR8uVX2sqWzMx
+[0m[38;5;8m[[0m2025-07-05T08:27:31.493728516Z [0m[32mINFO [0m solana_core::validator[0m[38;5;8m][0m vote account pubkey: 4RNmPKZYQfjfBQe921hVcizaJVbdDWGpUSzDiBp1oQ8j
+[0m[38;5;8m[[0m2025-07-05T08:27:31.494086739Z [0m[33mWARN [0m solana_core::validator[0m[38;5;8m][0m authorized voter: 4RNmPKZYQfjfBQe921hVcizaJVbdDWGpUSzDiBp1oQ8j
+[0m[38;5;8m[[0m2025-07-05T08:27:31.497124765Z [0m[32mINFO [0m solana_core::validator[0m[38;5;8m][0m Initializing sigverify...
+[0m[38;5;8m[[0m2025-07-05T08:27:31.497420390Z [0m[32mINFO [0m solana_core::validator[0m[38;5;8m][0m Initializing sigverify done.
+[0m[38;5;8m[[0m2025-07-05T08:27:31.506753626Z [0m[32mINFO [0m solana_core::validator[0m[38;5;8m][0m genesis hash: BU4CSqRtFStwL4UGBH3kuMdinhRrXoxKMz5YQKjRFToz
+[0m[38;5;8m[[0m2025-07-05T08:27:31.506784733Z [0m[32mINFO [0m solana_core::validator[0m[38;5;8m][0m Cleaning accounts paths..
+[0m[38;5;8m[[0m2025-07-05T08:27:31.507445708Z [0m[32mINFO [0m solana_core::validator[0m[38;5;8m][0m Cleaning accounts paths done. clean_accounts_paths took 644us
+[0m[38;5;8m[[0m2025-07-05T08:27:31.507498441Z [0m[32mINFO [0m solana_runtime::snapshot_utils[0m[38;5;8m][0m Unable to read bank snapshots directory 'test-ledger/snapshot': No such file or directory (os error 2)
+[0m[38;5;8m[[0m2025-07-05T08:27:31.507521190Z [0m[32mINFO [0m solana_runtime::snapshot_utils[0m[38;5;8m][0m Unable to read bank snapshots directory 'test-ledger/snapshot': No such file or directory (os error 2)
+[0m[38;5;8m[[0m2025-07-05T08:27:31.507532454Z [0m[32mINFO [0m solana_runtime::snapshot_utils[0m[38;5;8m][0m Unable to read bank snapshots directory 'test-ledger/snapshot': No such file or directory (os error 2)
+[0m[38;5;8m[[0m2025-07-05T08:27:31.507964702Z [0m[32mINFO [0m solana_core::validator[0m[38;5;8m][0m Cleaning orphaned account snapshot directories..
+[0m[38;5;8m[[0m2025-07-05T08:27:31.507986771Z [0m[32mINFO [0m solana_runtime::snapshot_utils[0m[38;5;8m][0m Unable to read bank snapshots directory 'test-ledger/snapshot': No such file or directory (os error 2)
+[0m[38;5;8m[[0m2025-07-05T08:27:31.507998562Z [0m[32mINFO [0m solana_core::validator[0m[38;5;8m][0m Cleaning orphaned account snapshot directories done. clean_orphaned_account_snapshot_dirs took 17us
+[0m[38;5;8m[[0m2025-07-05T08:27:31.508057599Z [0m[32mINFO [0m solana_core::validator[0m[38;5;8m][0m Geyser plugin: accounts_update_notifier: false, transaction_notifier: false, entry_notifier: false
+[0m[38;5;8m[[0m2025-07-05T08:27:31.508406070Z [0m[32mINFO [0m solana_core::system_monitor_service[0m[38;5;8m][0m Starting SystemMonitorService
+[0m[38;5;8m[[0m2025-07-05T08:27:31.508822348Z [0m[32mINFO [0m solana_core::validator[0m[38;5;8m][0m loading ledger from "test-ledger"...
+[0m[38;5;8m[[0m2025-07-05T08:27:31.508858396Z [0m[32mINFO [0m solana_ledger::blockstore[0m[38;5;8m][0m Maximum open file descriptors: 1048576
+[0m[38;5;8m[[0m2025-07-05T08:27:31.508865405Z [0m[32mINFO [0m solana_ledger::blockstore[0m[38;5;8m][0m Opening blockstore at "test-ledger/rocksdb"
+[0m[38;5;8m[[0m2025-07-05T08:27:31.671275322Z [0m[32mINFO [0m solana_ledger::blockstore[0m[38;5;8m][0m Opening blockstore done; blockstore open took 162ms
+[0m[38;5;8m[[0m2025-07-05T08:27:31.672930202Z [0m[32mINFO [0m solana_rpc::transaction_status_service[0m[38;5;8m][0m TransactionStatusService has started
+[0m[38;5;8m[[0m2025-07-05T08:27:31.675629822Z [0m[33mWARN [0m solana_ledger::bank_forks_utils[0m[38;5;8m][0m No snapshot package found in directory: test-ledger; will load from genesis
+[0m[38;5;8m[[0m2025-07-05T08:27:31.675661695Z [0m[32mINFO [0m solana_ledger::bank_forks_utils[0m[38;5;8m][0m Processing ledger from genesis
+[0m[38;5;8m[[0m2025-07-05T08:27:31.691174587Z [0m[32mINFO [0m solana_accounts_db::read_only_accounts_cache[0m[38;5;8m][0m AccountsReadCacheEvictor has started
+[0m[38;5;8m[[0m2025-07-05T08:27:31.691688013Z [0m[32mINFO [0m solana_accounts_db::accounts_db[0m[38;5;8m][0m Background account hasher has started
+[0m[38;5;8m[[0m2025-07-05T08:27:31.760172277Z [0m[32mINFO [0m solana_metrics::metrics[0m[38;5;8m][0m datapoint: bank-timestamp get_timestamp_estimate_us=1i
+[0m[38;5;8m[[0m2025-07-05T08:27:31.760210196Z [0m[32mINFO [0m solana_metrics::metrics[0m[38;5;8m][0m datapoint: bank-timestamp-correction slot=0i from_genesis=1751704050i corrected=0i ancestor_timestamp=0i
+[0m[38;5;8m[[0m2025-07-05T08:27:31.760433947Z [0m[32mINFO [0m solana_ledger::blockstore_processor[0m[38;5;8m][0m Processing ledger for slot 0...
+[0m[38;5;8m[[0m2025-07-05T08:27:31.766530568Z [0m[32mINFO [0m solana_metrics::metrics[0m[38;5;8m][0m datapoint: collect_rent_eagerly accounts=1i partitions=1i total_time_us=99i hold_range_us=44i load_us=19i collect_us=1i hash_us=0i store_us=0i
+[0m[38;5;8m[[0m2025-07-05T08:27:31.767206771Z [0m[32mINFO [0m solana_accounts_db::accounts_db[0m[38;5;8m][0m skipped rewrite hashes 0 0
+[0m[38;5;8m[[0m2025-07-05T08:27:31.767913873Z [0m[32mINFO [0m solana_metrics::metrics[0m[38;5;8m][0m datapoint: bank-hash_internal_state slot=0i total_us=819i accounts_delta_hash_us=813i
+[0m[38;5;8m[[0m2025-07-05T08:27:31.767909863Z [0m[32mINFO [0m solana_runtime::bank[0m[38;5;8m][0m bank frozen: 0 hash: HF8X8NGZFHjSgxhox6f6snxMocAwxiVhvF5C2JY4Rqyd accounts_delta: 71G1LxyJ2DuzbGCaSFVHhtQYUSc4qtCbYKAcZenFiCn1 signature_count: 0 last_blockhash: BU4CSqRtFStwL4UGBH3kuMdinhRrXoxKMz5YQKjRFToz capitalization: 503000508357590015, stats: BankHashStats { num_updated_accounts: 251, num_removed_accounts: 0, num_lamports_stored: 503000508400296575, total_data_len: 1038121, num_executable_accounts: 20 }
+[0m[38;5;8m[[0m2025-07-05T08:27:31.767942606Z [0m[32mINFO [0m solana_metrics::metrics[0m[38;5;8m][0m datapoint: slot_repeated_writes same_account_writes=1i same_account_writes_size=6008i unique_account_writes_size=1032113i size=1032113i
+[0m[38;5;8m[[0m2025-07-05T08:27:31.767949613Z [0m[32mINFO [0m solana_metrics::metrics[0m[38;5;8m][0m datapoint: accounts_cache_size num_roots=0i num_slots=1i total_unique_writes_size=1032113i total_size=1032113i
+[0m[38;5;8m[[0m2025-07-05T08:27:31.857270352Z [0m[32mINFO [0m solana_core::validator[0m[38;5;8m][0m shred version: 45402, hard forks: HardForks { hard_forks: [] }
+[0m[38;5;8m[[0m2025-07-05T08:27:31.857320942Z [0m[32mINFO [0m solana_core::validator[0m[38;5;8m][0m Skipping the blockstore check for shreds with incorrect version
+[0m[38;5;8m[[0m2025-07-05T08:27:31.857332659Z [0m[32mINFO [0m solana_core::validator[0m[38;5;8m][0m ContactInfo { pubkey: J4zcFcFMkxWnBMBsSHGA7MyfusMWvMbvR8uVX2sqWzMx, wallclock: 1751704051857, outset: 1751704051492218, shred_version: 45402, version: 2.1.20 (src:89985de3; feat:1416569292, client:Agave), addrs: [127.0.0.1], sockets: [SocketEntry { key: 0, index: 0, offset: 1024 }, SocketEntry { key: 10, index: 0, offset: 1 }, SocketEntry { key: 11, index: 0, offset: 1 }, SocketEntry { key: 5, index: 0, offset: 1 }, SocketEntry { key: 6, index: 0, offset: 1 }, SocketEntry { key: 9, index: 0, offset: 1 }, SocketEntry { key: 8, index: 0, offset: 4 }, SocketEntry { key: 7, index: 0, offset: 1 }, SocketEntry { key: 4, index: 0, offset: 1 }, SocketEntry { key: 1, index: 0, offset: 1 }, SocketEntry { key: 2, index: 0, offset: 7863 }, SocketEntry { key: 3, index: 0, offset: 1 }], extensions: [], cache: [127.0.0.1:1024, 127.0.0.1:1036, 127.0.0.1:8899, 127.0.0.1:8900, 127.0.0.1:1035, 127.0.0.1:1027, 127.0.0.1:1028, 127.0.0.1:1034, 127.0.0.1:1033, 127.0.0.1:1029, 127.0.0.1:1025, 127.0.0.1:1026, 0.0.0.0:0] }
+[0m[38;5;8m[[0m2025-07-05T08:27:31.857392487Z [0m[32mINFO [0m solana_core::validator[0m[38;5;8m][0m local gossip address: 0.0.0.0:1024
+[0m[38;5;8m[[0m2025-07-05T08:27:31.857400110Z [0m[32mINFO [0m solana_core::validator[0m[38;5;8m][0m local broadcast address: 0.0.0.0:1037
+[0m[38;5;8m[[0m2025-07-05T08:27:31.857407055Z [0m[32mINFO [0m solana_core::validator[0m[38;5;8m][0m local repair address: 0.0.0.0:1031
+[0m[38;5;8m[[0m2025-07-05T08:27:31.857414188Z [0m[32mINFO [0m solana_core::validator[0m[38;5;8m][0m local retransmit address: 0.0.0.0:1030
+[0m[38;5;8m[[0m2025-07-05T08:27:31.860258452Z [0m[32mINFO [0m solana_core::validator[0m[38;5;8m][0m Using: block-verification-method: unified-scheduler, block-production-method: central-scheduler
+[0m[38;5;8m[[0m2025-07-05T08:27:31.860292257Z [0m[32mINFO [0m solana_core::accounts_hash_verifier[0m[38;5;8m][0m AccountsHashVerifier has started
+[0m[38;5;8m[[0m2025-07-05T08:27:31.860299232Z [0m[32mINFO [0m solana_core::snapshot_packager_service[0m[38;5;8m][0m SnapshotPackagerService has started
+[0m[38;5;8m[[0m2025-07-05T08:27:31.860306441Z [0m[32mINFO [0m solana_runtime::accounts_background_service[0m[38;5;8m][0m AccountsBackgroundService has started
+[0m[38;5;8m[[0m2025-07-05T08:27:31.860557244Z [0m[32mINFO [0m solana_runtime::bank_forks[0m[38;5;8m][0m Installed new scheduler_pool into bank_forks: SchedulerPool { scheduler_inners: Mutex { data: [], poisoned: false, .. }, trashed_scheduler_inners: Mutex { data: [], poisoned: false, .. }, timeout_listeners: Mutex { data: [], poisoned: false, .. }, handler_count: 1, handler_context: HandlerContext { log_messages_bytes_limit: None, transaction_status_sender: Some(TransactionStatusSender { sender: Sender { .. } }), replay_vote_sender: Some(Sender { .. }), prioritization_fee_cache: PrioritizationFeeCache { cache: RwLock { data: {}, poisoned: false, .. }, service_thread: Some(JoinHandle { .. }), sender: Sender { .. }, metrics: PrioritizationFeeCacheMetrics { successful_transaction_update_count: 0, purged_duplicated_bank_count: 0, total_update_elapsed_us: 0, total_cache_lock_elapsed_us: 0, total_entry_update_elapsed_us: 0, total_block_finalize_elapsed_us: 0 } } }, weak_self: (Weak), next_scheduler_id: 0, max_usage_queue_count: 262144, _phantom: PhantomData<solana_unified_scheduler_pool::DefaultTaskHandler> }
+[0m[38;5;8m[[0m2025-07-05T08:27:31.860699324Z [0m[32mINFO [0m solana_core::sample_performance_service[0m[38;5;8m][0m SamplePerformanceService has started

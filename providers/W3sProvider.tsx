@@ -35,4 +35,4 @@ export function W3sProvider({ children }: { children: ReactNode }) {
   const value = useMemo(() => ({ client }), [client]);
 
   return <W3sContext.Provider value={value}>{children}</W3sContext.Provider>;
-} 
+}

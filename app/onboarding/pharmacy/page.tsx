@@ -9,7 +9,7 @@ import {
   ArrowLeft,
   Pill,
   Building,
-  Mail,
+  // Mail,
   CheckCircle,
   Shield,
   Clock,
@@ -42,27 +42,110 @@ import Image from "next/image";
 
 export default function PharmacyOnboardingPage() {
   const [currentStep, setCurrentStep] = useState(1);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedWallet, setCopiedWallet] = useState(false);
   const [agreedToPolicy, setAgreedToPolicy] = useState(false);
 
-  const [pharmacyImages, setPharmacyImages] = useState<string[]>([]);
-  const [profileImage, setProfileImage] = useState<File | null>(null);
+  // const [pharmacyImages, setPharmacyImages] =  // State for image previews
+  // const [imagePreview, setImagePreview] = useState<string | null>(null);
+  // const [licensePreview, setLicensePreview] = useState<string | null>(null);
+  // const [registrationPreview, setRegistrationPreview] = useState<string | null>(null);
 
   const searchParams = useSearchParams();
   const router = useRouter();
   const { toast } = useToast();
   const email = searchParams.get("email") || "";
   const walletAddress = searchParams.get("wallet") || "";
-  const publicKeyParam = searchParams.get("publicKey") || "";
 
-  const [formData, setFormData] = useState({
+  interface OperatingHoursDay {
+    open: string;
+    close: string;
+    isOpen: boolean;
+  }
+
+  interface OperatingHours {
+    monday: OperatingHoursDay;
+    tuesday: OperatingHoursDay;
+    wednesday: OperatingHoursDay;
+    thursday: OperatingHoursDay;
+    friday: OperatingHoursDay;
+    saturday: OperatingHoursDay;
+    sunday: OperatingHoursDay;
+    [key: string]: OperatingHoursDay;
+  }
+
+  interface Services {
+    prescription: boolean;
+    otc: boolean;
+    homeDelivery: boolean;
+    consultation: boolean;
+    vaccination: boolean;
+    healthScreening: boolean;
+    [key: string]: boolean;
+  }
+
+  interface PaymentMethods {
+    crypto: boolean;
+    creditCard: boolean;
+    bankTransfer: boolean;
+    mobileMoney: boolean;
+    [key: string]: boolean;
+  }
+
+  interface PharmacyFormData {
+    // Pharmacy Information
+    pharmacyName: string;
+    email: string;
+    walletAddress: string;
+    
+    // Contact Information
+    contactPersonFirstName: string;
+    contactPersonLastName: string;
+    phone: string;
+    country: string;
+    city: string;
+    address: string;
+    licenseNumber: string;
+    registrationNumber: string;
+    yearEstablished: string;
+    website: string;
+    description: string;
+    
+    // Operational Details
+    operatingHours: OperatingHours;
+    deliveryRadius: string;
+    deliveryFee: string;
+    minimumOrderValue: string;
+    acceptsInsurance: boolean;
+    insuranceProviders: string[];
+    
+    // Services
+    services: Services;
+    
+    // Payment Methods
+    paymentMethods: PaymentMethods;
+    
+    // Files and URLs
+    pharmacyImages: File[];
+    pharmacyLicense: File | null;
+    businessRegistration: File | null;
+    profileImage: File | null;
+    pharmacyLicenseName: string;
+    businessRegistrationName: string;
+    licenseUrl: string;
+    registrationUrl: string;
+  }
+
+  const initialFormData: PharmacyFormData = {
     // Pharmacy Information
     pharmacyName: "",
     email: email,
     walletAddress: walletAddress,
 
+    // Contact Information
+    contactPersonFirstName: "",
+    contactPersonLastName: "",
     phone: "",
     country: "",
     city: "",
@@ -87,7 +170,7 @@ export default function PharmacyOnboardingPage() {
     deliveryFee: "2.50",
     minimumOrderValue: "10.00",
     acceptsInsurance: false,
-    insuranceProviders: [] as string[],
+    insuranceProviders: [],
 
     // Services
     services: {
@@ -107,66 +190,73 @@ export default function PharmacyOnboardingPage() {
       mobileMoney: false,
     },
 
-    // Files
-    pharmacyImages: [] as File[],
-    pharmacyLicense: null as File | null,
-    businessRegistration: null as File | null,
-    profileImage: null as File | null,
-  });
+    // Files and URLs
+    pharmacyImages: [],
+    pharmacyLicense: null,
+    businessRegistration: null,
+    profileImage: null,
+    pharmacyLicenseName: "",
+    businessRegistrationName: "",
+    licenseUrl: "",
+    registrationUrl: "",
+  };
+
+  const [formData, setFormData] = useState<PharmacyFormData>(initialFormData);
 
   const totalSteps = 5;
 
-  const validateStep = () => {
-    const newErrors: Record<string, string> = {};
+  // const validateStep = () => {
+  //   const newErrors: Record<string, string> = {};
 
-    if (currentStep === 1) {
-      if (!formData.pharmacyName.trim())
-        newErrors.pharmacyName = "Pharmacy name is required";
-      if (!formData.contactPersonFirstName.trim())
-        newErrors.contactPersonFirstName =
-          "Contact person first name is required";
-      if (!formData.contactPersonLastName.trim())
-        newErrors.contactPersonLastName =
-          "Contact person last name is required";
-      if (!formData.phone.trim()) newErrors.phone = "Phone number is required";
-      if (!formData.country) newErrors.country = "Country is required";
-      if (!formData.city.trim()) newErrors.city = "City is required";
-      if (!formData.address.trim()) newErrors.address = "Address is required";
-    }
+  //   if (currentStep === 1) {
+  //     if (!formData.pharmacyName.trim())
+  //       newErrors.pharmacyName = "Pharmacy name is required";
+  //     if (!formData.contactPersonFirstName.trim())
+  //       newErrors.contactPersonFirstName = "Contact person's first name is required";
+  //     if (!formData.contactPersonLastName.trim())
+  //       newErrors.contactPersonLastName = "Contact person's last name is required";
+  //     if (!formData.phone.trim()) newErrors.phone = "Phone number is required";
+  //     if (!formData.country) newErrors.country = "Country is required";
+  //     if (!formData.city.trim()) newErrors.city = "City is required";
+  //     if (!formData.address.trim()) newErrors.address = "Address is required";
+  //   }
 
-    if (currentStep === 2) {
-      if (!formData.licenseNumber.trim())
-        newErrors.licenseNumber = "License number is required";
-      if (!formData.registrationNumber.trim())
-        newErrors.registrationNumber = "Registration number is required";
-      if (!formData.yearEstablished)
-        newErrors.yearEstablished = "Year established is required";
-    }
+  //   if (currentStep === 2) {
+  //     if (!formData.licenseNumber.trim())
+  //       newErrors.licenseNumber = "License number is required";
+  //     if (!formData.registrationNumber.trim())
+  //       newErrors.registrationNumber = "Registration number is required";
+  //     if (!formData.yearEstablished)
+  //       newErrors.yearEstablished = "Year established is required";
+  //   }
 
-    if (currentStep === 3) {
-      if (!formData.description.trim())
-        newErrors.description = "Description is required";
-      if (formData.description.trim().length < 30)
-        newErrors.description = "Description must be at least 30 characters";
-      if (formData.servicesOffered.length === 0)
-        newErrors.servicesOffered = "At least one service is required";
-    }
+  //   if (currentStep === 3) {
+  //     if (!formData.description.trim())
+  //       newErrors.description = "Description is required";
+  //     if (formData.description.trim().length < 30)
+  //       newErrors.description = "Description must be at least 30 characters";
+  //     // if (formData.servicesOffered.length === 0)
+  //     //   newErrors.servicesOffered = "At least one service is required";
+  //   }
 
-    if (currentStep === 4) {
-      if (!formData.profileImage)
-        newErrors.profileImage = "Profile image is required";
-    }
+  //   if (currentStep === 4) {
+  //     if (!formData.profileImage)
+  //       newErrors.profileImage = "Profile image is required";
+  //   }
 
-    if (currentStep === 5) {
-      if (!agreedToPolicy)
-        newErrors.policy = "You must agree to the terms and conditions";
-    }
+  //   if (currentStep === 5) {
+  //     if (!agreedToPolicy)
+  //       newErrors.policy = "You must agree to the terms and conditions";
+  //   }
 
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+  //   setErrors(newErrors);
+  //   return Object.keys(newErrors).length === 0;
+  // };
 
-  const updateFormData = (field: string, value: any) => {
+  const updateFormData = <K extends keyof PharmacyFormData>(
+    field: K,
+    value: PharmacyFormData[K]
+  ) => {
     setFormData((prev) => ({
       ...prev,
       [field]: value,
@@ -177,52 +267,177 @@ export default function PharmacyOnboardingPage() {
     }
   };
 
-  const updateNestedFormData = (parent: string, field: string, value: any) => {
+  const updateNestedFormData = <K extends keyof PharmacyFormData, F extends keyof PharmacyFormData[K]>(
+    parent: K,
+    field: F,
+    value: PharmacyFormData[K][F]
+  ) => {
     setFormData((prev) => ({
       ...prev,
       [parent]: {
-        ...prev[parent as keyof typeof prev],
+        ...(prev[parent] as object),
         [field]: value,
       },
     }));
   };
 
-  const updateOperatingHours = (day: string, field: string, value: any) => {
+  const updateOperatingHours = (
+    day: keyof OperatingHours,
+    field: keyof OperatingHoursDay,
+    value: string | boolean
+  ) => {
     setFormData((prev) => ({
       ...prev,
       operatingHours: {
         ...prev.operatingHours,
         [day]: {
-          ...prev.operatingHours[day as keyof typeof prev.operatingHours],
+          ...prev.operatingHours[day],
           [field]: value,
         },
       },
     }));
   };
 
-  const handlePharmacyImagesUpload = (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      updateFormData("profileImage", file);
-
-      // Create preview URL
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setProfileImage(e.target?.result as string);
-      };
-      reader.readAsDataURL(file);
+  const handlePharmacyImagesUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setErrors(prev => ({
+        ...prev,
+        pharmacyImages: 'Please upload an image file (JPEG, PNG, etc.)'
+      }));
+      return;
+    }
+    
+    // Validate file size (5MB limit as per UI)
+    if (file.size > 1 * 1024 * 1024) {
+      setErrors(prev => ({
+        ...prev,
+        pharmacyImages: 'Image size should be less than 1MB'
+      }));
+      return;
+    }
+    
+    // Update form data with the new profile image
+    setFormData(prev => ({
+      ...prev,
+      profileImage: file,
+      pharmacyImages: [file] // Keep this as array to match validation
+    }));
+    
+    // Create preview URL for the image
+    // const previewUrl = URL.createObjectURL(file);
+    // setImagePreview(previewUrl);
+    
+    // Clear any previous errors
+    setErrors(prev => ({
+      ...prev,
+      pharmacyImages: undefined,
+      profileImage: undefined
+    }));
+    
+    // Clear any previous errors
+    if (errors.profileImage) {
+      setErrors(prev => ({
+        ...prev,
+        profileImage: undefined
+      }));
     }
   };
 
-  const handleFileUpload = (
-    event: React.ChangeEvent<HTMLInputElement>,
-    fieldName: string
-  ) => {
-    const file = event.target.files?.[0];
+  // const handleProfileImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  //   const file = e.target.files?.[0];
+  //   if (file) {
+  //     // Validate file type
+  //     if (!file.type.startsWith('image/')) {
+  //       setErrors(prev => ({
+  //         ...prev,
+  //         profileImage: 'Please upload an image file (JPEG, PNG, etc.)'
+  //       }));
+  //       e.target.value = ''; // Clear the file input
+  //       return;
+  //     }
+      
+  //     try {
+  //       // Validate file size (max 1MB)
+  //       validateFileSize(file, 1);
+        
+  //       // Create preview URL
+  //       // const previewUrl = URL.createObjectURL(file);
+  //       // setImagePreview(previewUrl);
+        
+  //       // Update form data
+  //       setFormData(prev => ({
+  //         ...prev,
+  //         profileImage: file
+  //       }));
+        
+  //       // Clear any previous errors
+  //       if (errors.profileImage) {
+  //         setErrors(prev => ({
+  //           ...prev,
+  //           profileImage: undefined
+  //         }));
+  //       }
+  //     } catch (error) {
+  //       setErrors(prev => ({
+  //         ...prev,
+  //         profileImage: error instanceof Error ? error.message : 'Invalid file size'
+  //       }));
+  //       e.target.value = ''; // Clear the file input
+  //     }
+      
+
+  //   }
+  // };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, field: 'pharmacyLicense' | 'businessRegistration') => {
+    const file = e.target.files?.[0];
     if (file) {
-      updateFormData(fieldName, file);
+      // Validate file type (allow PDF and images)
+      const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'];
+      if (!validTypes.includes(file.type)) {
+        setErrors({
+          ...errors,
+          [field]: 'Please upload a PDF or image file (JPEG, PNG, etc.)'
+        });
+        return;
+      }
+      
+      // Validate file size (max 5MB for documents)
+      if (file.size > 1 * 1024 * 1024) {
+        setErrors({
+          ...errors,
+          [field]: 'File size must be less than 1MB'
+        });
+        return;
+      }
+      
+      // Update form data with the file
+      setFormData(prev => ({
+        ...prev,
+        [field]: file,
+        [`${field}Name`]: file.name // Store the file name for display
+      }));
+      
+      // Clear any previous errors for this field
+      if (errors[field]) {
+        const newErrors = { ...errors };
+        delete newErrors[field];
+        setErrors(newErrors);
+      }
+      
+      // For images, create a preview
+      // if (file.type.startsWith('image/')) {
+      //   const previewUrl = URL.createObjectURL(file);
+      //   if (field === 'pharmacyLicense') {
+      //     setLicensePreview(previewUrl);
+      //   } else {
+      //     setRegistrationPreview(previewUrl);
+      //   }
+      // }
     }
   };
 
@@ -232,14 +447,156 @@ export default function PharmacyOnboardingPage() {
       setCopiedWallet(true);
       setTimeout(() => setCopiedWallet(false), 2000);
     } catch (err) {
-      console.error("Failed to copy wallet address");
+      console.error(`Failed to copy wallet address: ${err}`);
     }
   };
 
   const nextStep = () => {
-    if (validateStep() && currentStep < totalSteps) {
-      setCurrentStep(currentStep + 1);
+    console.log('[nextStep] Current step:', currentStep);
+    console.log('[nextStep] Form data:', formData);
+    
+    // Check for required fields in the current step
+    let hasErrors = false;
+    const currentStepErrors: Record<string, string> = {};
+    
+    // Only validate the current step's fields
+    if (currentStep === 1) {
+      console.log('[nextStep] Validating step 1 fields');
+      if (!formData.pharmacyName?.trim()) {
+        console.log('[nextStep] Missing pharmacy name');
+        currentStepErrors.pharmacyName = "Pharmacy name is required";
+        hasErrors = true;
+      }
+      if (!formData.contactPersonFirstName?.trim()) {
+        console.log('[nextStep] Missing contact person first name');
+        currentStepErrors.contactPersonFirstName = "Contact person's first name is required";
+        hasErrors = true;
+      }
+      if (!formData.contactPersonLastName?.trim()) {
+        console.log('[nextStep] Missing contact person last name');
+        currentStepErrors.contactPersonLastName = "Contact person's last name is required";
+        hasErrors = true;
+      }
+      if (!formData.phone?.trim()) {
+        console.log('[nextStep] Missing phone');
+        currentStepErrors.phone = "Phone number is required";
+        hasErrors = true;
+      }
+      if (!formData.country) {
+        console.log('[nextStep] Missing country');
+        currentStepErrors.country = "Country is required";
+        hasErrors = true;
+      }
+      if (!formData.city?.trim()) {
+        console.log('[nextStep] Missing city');
+        currentStepErrors.city = "City is required";
+        hasErrors = true;
+      }
+      if (!formData.yearEstablished) {
+        console.log('[nextStep] Missing year established');
+        currentStepErrors.yearEstablished = "Year established is required";
+        hasErrors = true;
+      }
+    } else if (currentStep === 2) {
+      console.log('[nextStep] Validating step 2 fields');
+      if (!formData.pharmacyImages || formData.pharmacyImages.length === 0) {
+        console.log('[nextStep] No pharmacy images uploaded');
+        currentStepErrors.pharmacyImages = "Please upload pharmacy shop image";
+        hasErrors = true;
+      }
+    } else if (currentStep === 3) {
+      console.log('[nextStep] Validating step 3 fields - License & Registration');
+      if (!formData.address?.trim()) {
+        console.log('[nextStep] Missing address');
+        currentStepErrors.address = "Address is required";
+        hasErrors = true;
+      }
+      if (!formData.licenseNumber?.trim()) {
+        console.log('[nextStep] Missing license number');
+        currentStepErrors.licenseNumber = "License number is required";
+        hasErrors = true;
+      }
+      if (!formData.registrationNumber?.trim()) {
+        console.log('[nextStep] Missing registration number');
+        currentStepErrors.registrationNumber = "Business registration number is required";
+        hasErrors = true;
+      }
+      if (!formData.description?.trim() || formData.description.trim().length < 30) {
+        currentStepErrors.description = "Description must be at least 30 characters";
+        hasErrors = true;
+      }
+    } else if (currentStep === 4) {
+      if (!formData.profileImage) {
+        currentStepErrors.profileImage = "Profile image is required";
+        hasErrors = true;
+      }
+    }
+
+    Object.keys(errors).forEach(key => {
+      if (!(key in currentStepErrors)) {
+        delete errors[key];
+      }
+    });
+    
+    if (hasErrors) {
+      setErrors(currentStepErrors);
+      
+      // Scroll to the first error after a small delay to allow the DOM to update
+      setTimeout(() => {
+        const firstError = Object.keys(currentStepErrors)[0];
+        console.log('[nextStep] First error element ID:', firstError);
+        
+        // Try to find the input element or its parent with error class
+        let element: HTMLElement | null = document.getElementById(firstError);
+        if (!element) {
+          // If direct element not found, try to find by name or data-testid
+          element = document.querySelector<HTMLElement>(`[name="${firstError}"], [data-testid="${firstError}"]`);
+        }
+        
+        if (element) {
+          console.log('[nextStep] Scrolling to error element');
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          
+          // Focus the first invalid field
+          if ('focus' in element) {
+            element.focus();
+          } else {
+            const firstChild = (element as HTMLElement).firstElementChild as HTMLElement | null;
+            if (firstChild && 'focus' in firstChild) {
+              firstChild.focus();
+              }
+            }
+        } else {
+          console.warn('[nextStep] Could not find error element for:', firstError);
+          // If we can't find the specific element, at least scroll to the top of the form
+          const form = document.querySelector('form');
+          form?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 100);
+      
+      return;
+    }
+    
+    // If no errors, proceed to next step
+    console.log('[nextStep] No validation errors, proceeding to next step');
+    if (currentStep < totalSteps) {
+      console.log('[nextStep] Current step before update:', currentStep);
+      const nextStepValue = currentStep + 1;
+      console.log('[nextStep] Setting step to:', nextStepValue);
+      
+      // Update state and clear errors
+      setCurrentStep(nextStepValue);
       setErrors({});
+      
+      // Scroll to top of form when moving to next step
+      setTimeout(() => {
+        const form = document.querySelector('form');
+        form?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
+      
+      console.log('[nextStep] Step update scheduled');
+    } else {
+      console.log('[nextStep] Already at last step:', currentStep);
     }
   };
 
@@ -249,54 +606,273 @@ export default function PharmacyOnboardingPage() {
     }
   };
 
-  const handleSubmit = async () => {
-    if (!validateStep()) return;
+  // Validate file size (1MB limit)
+  const validateFileSize = (file: File, maxSizeMB: number = 1): boolean => {
+    const maxSize = maxSizeMB * 1024 * 1024; // Convert MB to bytes
+    if (file.size > maxSize) {
+      const errorMessage = `File size must be less than ${maxSizeMB}MB`;
+      throw new Error(errorMessage);
+    }
+    return true;
+  };
+
+  // Prepare file for upload via API route
+  const uploadFileToStorage = async (file: File, fileType: 'profile' | 'license' | 'registration' | 'other') => {
+    try {
+      if (!file) {
+        throw new Error('No file provided for upload');
+      }
+      
+      // Validate file size before upload (1MB limit)
+      validateFileSize(file, 1);
+      
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('fileType', fileType);
+      
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      
+      const responseData = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(responseData.error || 'Failed to upload file');
+      }
+      
+      if (!responseData || !responseData.url) {
+        throw new Error('Invalid response from server: Missing URL');
+      }
+      
+      return responseData.url;
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      throw error instanceof Error ? error : new Error('Failed to upload file');
+    }
+  };
+
+  const handleSubmit = async (e?: React.FormEvent) => {
+  if (e) {
+    e.preventDefault();
+  }
+    // Final validation for all steps
+    const allErrors: Record<string, string> = {};
+    let hasErrors = false;
+    
+    // Validate all steps
+    if (!formData.pharmacyName?.trim()) {
+      allErrors.pharmacyName = "Pharmacy name is required";
+      hasErrors = true;
+    }
+    if (!formData.phone?.trim()) {
+      allErrors.phone = "Phone number is required";
+      hasErrors = true;
+    }
+    if (!formData.country) {
+      allErrors.country = "Country is required";
+      hasErrors = true;
+    }
+    if (!formData.city?.trim()) {
+      allErrors.city = "City is required";
+      hasErrors = true;
+    }
+    if (!formData.address?.trim()) {
+      allErrors.address = "Address is required";
+      hasErrors = true;
+    }
+    if (!formData.licenseNumber?.trim()) {
+      allErrors.licenseNumber = "License number is required";
+      hasErrors = true;
+    }
+    if (!formData.registrationNumber?.trim()) {
+      allErrors.registrationNumber = "Registration number is required";
+      hasErrors = true;
+    }
+    if (!formData.yearEstablished) {
+      allErrors.yearEstablished = "Year established is required";
+      hasErrors = true;
+    }
+    if (!formData.description?.trim() || formData.description.trim().length < 30) {
+      allErrors.description = "Description must be at least 30 characters";
+      hasErrors = true;
+    }
+    if (!formData.profileImage) {
+      allErrors.profileImage = "Profile image is required";
+      hasErrors = true;
+    }
+
+    if (!agreedToPolicy) {
+      allErrors.policy = 'You must agree to the terms and conditions to continue';
+      hasErrors = true;
+    }
+
+    if (hasErrors) {
+      setErrors(allErrors);
+      const firstError = Object.keys(allErrors)[0];
+      const element = document.getElementById(firstError);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
 
     setIsSubmitting(true);
+
     try {
-      // Create pharmacy profile
-      const userData = {
+      const formDataToSend = new FormData();
+
+      const formFields = {
         email: formData.email,
         walletAddress: formData.walletAddress,
         userType: "pharmacy",
-        pharmacyName: formData.pharmacyName,
-        contactPersonFirstName: formData.contactPersonFirstName,
-        contactPersonLastName: formData.contactPersonLastName,
+        firstName: formData.contactPersonFirstName,
+        lastName: formData.contactPersonLastName,
         phone: formData.phone,
         country: formData.country,
         city: formData.city,
         address: formData.address,
+        contactPersonFirstName: formData.contactPersonFirstName,
+        contactPersonLastName: formData.contactPersonLastName,
+        pharmacyName: formData.pharmacyName,
         licenseNumber: formData.licenseNumber,
-        operatingHours: formData.operatingHours,
-        servicesOffered: formData.servicesOffered,
-        deliveryRadiusKm: formData.deliveryRadiusKm || 10,
-        deliveryFee: formData.deliveryFee || 0,
+        registrationNumber: formData.registrationNumber,
+        yearEstablished: formData.yearEstablished,
+        website: formData.website || '',
         description: formData.description,
-        certifications: [], // Add if needed
-        profileImage: formData.profileImage || null, // Use first image as profile
+        operatingHours: JSON.stringify(formData.operatingHours || {
+          monday: { open: "09:00", close: "18:00", isOpen: true },
+          tuesday: { open: "09:00", close: "18:00", isOpen: true },
+          wednesday: { open: "09:00", close: "18:00", isOpen: true },
+          thursday: { open: "09:00", close: "18:00", isOpen: true },
+          friday: { open: "09:00", close: "18:00", isOpen: true },
+          saturday: { open: "09:00", close: "14:00", isOpen: true },
+          sunday: { open: "00:00", close: "00:00", isOpen: false },
+        }),
+        deliveryRadiusKm: formData.deliveryRadius || 5,
+        deliveryFee: formData.deliveryFee || "2.50",
+        minimumOrderValue: formData.minimumOrderValue || "10.00",
+        acceptsInsurance: formData.acceptsInsurance || false,
+        insuranceProviders: JSON.stringify(formData.insuranceProviders || []),
+        services: JSON.stringify({
+          prescription: true,
+          otc: true,
+          homeDelivery: true,
+          consultation: false,
+          vaccination: false,
+        }),
+        agreedToPolicy: agreedToPolicy,
+        licenseUrl: formData.licenseUrl || '',
+        registrationUrl: formData.registrationUrl || '',
+        profileImage: formData.profileImage || '',
       };
 
-      console.log("Creating pharmacy profile:", userData);
+      // First, upload all files and get their URLs
+      try {
+        // Upload profile image if exists
+        if (formData.profileImage) {
+          const profileImageUrl = await uploadFileToStorage(formData.profileImage, 'profile');
+          if (profileImageUrl) {
+            formFields.profileImage = profileImageUrl;
+            setFormData(prev => ({
+              ...prev,
+              profileImageUrl: profileImageUrl
+            }));
+          }
+        }
+
+        // Upload pharmacy license if exists
+        if (formData.pharmacyLicense) {
+          try {
+            const licenseUrl = await uploadFileToStorage(formData.pharmacyLicense, 'license');
+            if (licenseUrl) {
+              formFields.licenseUrl = licenseUrl;
+              setFormData(prev => ({
+                ...prev,
+                licenseUrl: licenseUrl
+              }));
+            } else {
+              throw new Error('Failed to upload license file');
+            }
+          } catch (error) {
+            console.error('Error uploading license:', error);
+            throw new Error('Failed to upload license file. Please try again.');
+          }
+        }
+
+        // Upload business registration if exists
+        if (formData.businessRegistration) {
+          try {
+            const registrationUrl = await uploadFileToStorage(formData.businessRegistration, 'registration');
+            if (registrationUrl) {
+              formFields.registrationUrl = registrationUrl;
+              setFormData(prev => ({
+                ...prev,
+                registrationUrl: registrationUrl
+              }));
+            } else {
+              throw new Error('Failed to upload registration file');
+            }
+          } catch (error) {
+            console.error('Error uploading registration:', error);
+            throw new Error('Failed to upload registration file. Please try again.');
+          }
+        }
+
+        // First, add all form fields to FormData
+        Object.entries(formFields).forEach(([key, value]) => {
+          if (value !== undefined && value !== null) {
+            // Handle nested objects (like operatingHours) by stringifying them
+            if (typeof value === 'object' && !(value instanceof File)) {
+              formDataToSend.append(key, JSON.stringify(value));
+            } else {
+              formDataToSend.append(key, String(value));
+            }
+          }
+        });
+
+        // Explicitly append the file URLs to ensure they're included
+        if (formData.licenseUrl) {
+          formDataToSend.append('licenseUrl', formData.licenseUrl);
+          console.log('Appended licenseUrl to form data:', formData.licenseUrl);
+        }
+        if (formData.registrationUrl) {
+          formDataToSend.append('registrationUrl', formData.registrationUrl);
+          console.log('Appended registrationUrl to form data:', formData.registrationUrl);
+        }
+
+        // Log the complete form data for debugging
+        console.log('Form data being sent:', Object.fromEntries(formDataToSend.entries()));
+      } catch (error) {
+        console.error('Error uploading files:', error);
+        throw new Error('Failed to upload one or more files. Please try again.');
+      }
+
+      // Log the data being sent for debugging
+      console.log('Submitting pharmacy profile with data:', {
+        ...formFields,
+        profileImage: formData.profileImage ? 'File attached' : 'No file'
+      });
 
       // Call Supabase API to create/update user profile
       const response = await fetch("/api/user/profile", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(userData),
+        body: formDataToSend,
+        // Don't set Content-Type header - let the browser set it with the correct boundary
       });
 
+      const responseData = await response.json();
+      console.log('API Response:', responseData);
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to create profile");
+        console.error('API Error:', responseData);
+        throw new Error(responseData.error || responseData.message || "Failed to create profile");
       }
 
       // Show success message
       toast({
         title: "Profile Created Successfully!",
-        description:
-          "Your pharmacy profile has been created. You can now sign in to access your account.",
+        description: "Your pharmacy profile has been created. You can now sign in to access your account.",
       });
 
       // Store email for dashboard access
@@ -307,11 +883,25 @@ export default function PharmacyOnboardingPage() {
         router.push("/signin");
       }, 2000);
     } catch (error: unknown) {
+      console.error('Error in form submission:', error);
+      let errorMessage = "Profile creation failed. Please try again.";
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error && typeof error === 'object' && 'message' in error) {
+        errorMessage = String(error.message);
+      }
+      
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+      
       setErrors({
-        submit:
-          error instanceof Error
-            ? error.message
-            : "Profile creation failed. Please try again.",
+        submit: errorMessage,
       });
     } finally {
       setIsSubmitting(false);
@@ -428,7 +1018,7 @@ export default function PharmacyOnboardingPage() {
                       Pharmacy Information
                     </h2>
                     <p className="text-gray-600 dark:text-gray-300">
-                      Let's start with your pharmacy's basic details
+                      Let&apos;s start with your pharmacy&apos;s basic details
                     </p>
                   </div>
 
@@ -497,6 +1087,36 @@ export default function PharmacyOnboardingPage() {
 
                   <div className="grid md:grid-cols-2 gap-4">
                     <div>
+                      <Label htmlFor="contactPersonFirstName">
+                        Contact Person First Name <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="contactPersonFirstName"
+                        value={formData.contactPersonFirstName}
+                        onChange={(e) =>
+                          updateFormData("contactPersonFirstName", e.target.value)
+                        }
+                        placeholder="Enter first name"
+                        className={errors.contactPersonFirstName ? "border-red-500" : ""}
+                      />
+                      {getFieldError("contactPersonFirstName")}
+                    </div>
+                    <div>
+                      <Label htmlFor="contactPersonLastName">
+                        Contact Person Last Name <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="contactPersonLastName"
+                        value={formData.contactPersonLastName}
+                        onChange={(e) =>
+                          updateFormData("contactPersonLastName", e.target.value)
+                        }
+                        placeholder="Enter last name"
+                        className={errors.contactPersonLastName ? "border-red-500" : ""}
+                      />
+                      {getFieldError("contactPersonLastName")}
+                    </div>
+                    <div>
                       <Label htmlFor="phone">
                         Phone Number <span className="text-red-500">*</span>
                       </Label>
@@ -540,18 +1160,23 @@ export default function PharmacyOnboardingPage() {
 
                   <div className="grid md:grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="city">City</Label>
+                      <Label htmlFor="city">
+                        City <span className="text-red-500">*</span>
+                      </Label>
                       <Input
                         id="city"
                         value={formData.city}
                         onChange={(e) => updateFormData("city", e.target.value)}
                         placeholder="Enter your city"
                         className={errors.city ? "border-red-500" : ""}
+                        required
                       />
                       {getFieldError("city")}
                     </div>
                     <div>
-                      <Label htmlFor="yearEstablished">Year Established</Label>
+                      <Label htmlFor="yearEstablished">
+                        Year Established <span className="text-red-500">*</span>
+                      </Label>
                       <Input
                         id="yearEstablished"
                         type="number"
@@ -563,10 +1188,13 @@ export default function PharmacyOnboardingPage() {
                         className={
                           errors.yearEstablished ? "border-red-500" : ""
                         }
+                        required
                       />
                       {getFieldError("yearEstablished")}
                     </div>
                   </div>
+
+
 
                   <div>
                     <Label htmlFor="website">Website (Optional)</Label>
@@ -595,24 +1223,36 @@ export default function PharmacyOnboardingPage() {
                       <Camera className="w-8 h-8 text-white" />
                     </div>
                     <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-                      Pharmacy Photos
+                      Pharmacy Photo
                     </h2>
                     <p className="text-gray-600 dark:text-gray-300">
-                      Add photos of your pharmacy to build trust with customers
+                      Add a clear photo of your pharmacy store to build trust with customers
                     </p>
                   </div>
 
                   <div className="space-y-4">
-                    {profileImage && (
-                      <div className="flex justify-center">
-                        <div className="relative">
+                    {formData.profileImage && (
+                      <div className="flex justify-center mb-4">
+                        <div className="relative w-full max-w-2xl">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
-                            src={profileImage}
+                            src={formData.profileImage instanceof File ? URL.createObjectURL(formData.profileImage) : ''}
                             alt="Pharmacy Profile"
-                            className="w-48 h-48 object-cover rounded-lg border"
+                            className="w-full h-auto max-h-96 object-contain rounded-lg border p-2 bg-transparent"
+                            onLoad={(e) => {
+                              if (formData.profileImage instanceof File) {
+                                URL.revokeObjectURL(e.currentTarget.src);
+                              }
+                            }}
                           />
                         </div>
                       </div>
+                    )}
+
+                    {errors.pharmacyImages && (
+                      <p className="text-sm text-red-600 text-center mt-2">
+                        {errors.pharmacyImages}
+                      </p>
                     )}
 
                     <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center">
@@ -636,14 +1276,9 @@ export default function PharmacyOnboardingPage() {
                         </Button>
                       </label>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                        Supported formats: JPG, PNG (max 5MB)
+                        Supported formats: JPG, PNG (max 1MB)
                       </p>
                     </div>
-                    {errors.profileImage && (
-                      <p className="text-sm text-red-600 mt-1">
-                        {errors.profileImage}
-                      </p>
-                    )}
                   </div>
                 </motion.div>
               )}
@@ -675,11 +1310,10 @@ export default function PharmacyOnboardingPage() {
                     <Textarea
                       id="address"
                       value={formData.address}
-                      onChange={(e) =>
-                        updateFormData("address", e.target.value)
-                      }
-                      placeholder="Enter your complete pharmacy address"
-                      className={errors.address ? "border-red-500" : ""}
+                      onChange={(e) => updateFormData("address", e.target.value)}
+                      placeholder="Enter your complete pharmacy address including street, building number, etc."
+                      className={`min-h-[100px] mb-4 ${errors.address ? "border-red-500" : ""}`}
+                      required
                     />
                     {getFieldError("address")}
                   </div>
@@ -703,7 +1337,7 @@ export default function PharmacyOnboardingPage() {
                     </div>
                     <div>
                       <Label htmlFor="registrationNumber">
-                        Business Registration Number
+                        Business Registration Number <span className="text-red-500">*</span>
                       </Label>
                       <Input
                         id="registrationNumber"
@@ -712,21 +1346,28 @@ export default function PharmacyOnboardingPage() {
                           updateFormData("registrationNumber", e.target.value)
                         }
                         placeholder="Enter registration number"
+                        className={errors.registrationNumber ? "border-red-500" : ""}
+                        required
                       />
+                      {getFieldError("registrationNumber")}
                     </div>
                   </div>
 
                   <div>
-                    <Label htmlFor="description">Pharmacy Description</Label>
+                    <Label htmlFor="description">
+                      Pharmacy Description <span className="text-red-500">*</span>
+                    </Label>
                     <Textarea
                       id="description"
                       value={formData.description}
                       onChange={(e) =>
                         updateFormData("description", e.target.value)
                       }
-                      placeholder="Describe your pharmacy, specialties, and what makes you unique"
-                      className="min-h-[100px]"
+                      placeholder="Describe your pharmacy, specialties, and what makes you unique (minimum 30 characters)"
+                      className={`min-h-[100px] ${errors.description ? "border-red-500" : ""}`}
+                      required
                     />
+                    {getFieldError("description")}
                   </div>
 
                   <div className="space-y-4">
@@ -736,7 +1377,7 @@ export default function PharmacyOnboardingPage() {
                         Pharmacy License
                       </h3>
                       <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-                        Upload a clear photo of your pharmacy license
+                        Upload a clear photo or PDF file of your pharmacy license
                       </p>
                       <input
                         type="file"
@@ -1101,6 +1742,7 @@ export default function PharmacyOnboardingPage() {
                         <h4 className="font-medium mb-2">Services</h4>
                         <div className="flex flex-wrap gap-2">
                           {Object.entries(formData.services)
+                            // eslint-disable-next-line @typescript-eslint/no-unused-vars
                             .filter(([_, enabled]) => enabled)
                             .map(([service]) => (
                               <span
@@ -1117,16 +1759,16 @@ export default function PharmacyOnboardingPage() {
 
                   <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-6">
                     <h3 className="font-semibold text-blue-900 dark:text-blue-300 mb-3">
-                      What's Next?
+                      What&apos;s Next?
                     </h3>
                     <ul className="space-y-2 text-sm text-blue-800 dark:text-blue-400">
                       <li className="flex items-center">
                         <CheckCircle className="w-4 h-4 mr-2" />
-                        Email verification link will be sent
+                        Document review within 24-48 hours
                       </li>
                       <li className="flex items-center">
                         <CheckCircle className="w-4 h-4 mr-2" />
-                        Document review within 24-48 hours
+                        Email verification link will be sent if approved
                       </li>
                       <li className="flex items-center">
                         <CheckCircle className="w-4 h-4 mr-2" />
@@ -1176,29 +1818,35 @@ export default function PharmacyOnboardingPage() {
                 onClick={prevStep}
                 disabled={currentStep === 1}
                 className="flex items-center bg-transparent"
+                type="button"
               >
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Previous
               </Button>
 
               {currentStep === totalSteps ? (
-                <Button
-                  onClick={handleSubmit}
-                  disabled={isSubmitting}
-                  className="bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700 text-white flex items-center"
-                >
-                  {isSubmitting ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                      Processing...
-                    </>
-                  ) : (
-                    <>
-                      Complete Registration
-                      <CheckCircle className="w-4 h-4 ml-2" />
-                    </>
-                  )}
-                </Button>
+                <form onSubmit={handleSubmit} className="m-0">
+                  <Button
+                    type="submit"
+                    disabled={isSubmitting || !agreedToPolicy}
+                    className={`bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700 text-white flex items-center ${
+                      !agreedToPolicy ? 'opacity-50 cursor-not-allowed' : ''
+                    }`}
+                    title={!agreedToPolicy ? 'Please agree to the terms and conditions' : ''}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        Complete Registration
+                        <CheckCircle className="w-4 h-4 ml-2" />
+                      </>
+                    )}
+                  </Button>
+                </form>
               ) : (
                 <Button
                   onClick={nextStep}

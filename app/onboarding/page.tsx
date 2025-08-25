@@ -42,7 +42,6 @@ export default function PatientOnboardingPage() {
   const { toast } = useToast();
   const email = searchParams.get("email") || "";
   const walletAddress = searchParams.get("wallet") || "";
-  const publicKey = searchParams.get("publicKey") || "";
 
   const [currentStep, setCurrentStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -56,7 +55,6 @@ export default function PatientOnboardingPage() {
     lastName: "",
     email: email,
     walletAddress: walletAddress,
-
     phone: "",
     country: "",
     city: "",
@@ -167,14 +165,46 @@ export default function PatientOnboardingPage() {
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file) {
-      updateFormData("profileImage", file);
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setProfileImage(e.target?.result as string);
-      };
-      reader.readAsDataURL(file);
-      }
+    if (!file) return;
+
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/png', 'image/gif'];
+    if (!validTypes.includes(file.type)) {
+      toast({
+        title: 'Invalid file type',
+        description: 'Please upload a JPG, PNG, or GIF image.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate file size (5MB max)
+    const maxSize = 1 * 1024 * 1024;
+    if (file.size > maxSize) {
+      toast({
+        title: 'File too large',
+        description: 'Please upload an image smaller than 1MB.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Update form data with the new file
+    updateFormData("profileImage", file);
+
+    // Create a preview of the image
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setProfileImage(e.target?.result as string);
+    };
+    reader.onerror = () => {
+      toast({
+        title: 'Error',
+        description: 'Failed to process the image. Please try again.',
+        variant: 'destructive',
+      });
+    };
+    reader.readAsDataURL(file);
   };
 
   const copyWalletAddress = async () => {
@@ -183,7 +213,7 @@ export default function PatientOnboardingPage() {
       setCopiedWallet(true);
       setTimeout(() => setCopiedWallet(false), 2000);
     } catch (err) {
-      console.error("Failed to copy wallet address");
+      console.error(`Failed to copy wallet address: ${err}`);
     }
   };
 
@@ -211,8 +241,10 @@ export default function PatientOnboardingPage() {
 
     setIsSubmitting(true);
     try {
-      // Create patient profile
-      const userData = {
+      const formDataToSend = new FormData();
+
+      // Add all form fields to FormData
+      const formFields = {
         email: formData.email,
         walletAddress: formData.walletAddress,
         userType: "patient",
@@ -232,23 +264,41 @@ export default function PatientOnboardingPage() {
         medicalHistory: formData.medicalHistory,
         allergies: formData.allergies,
         currentMedications: formData.currentMedications,
-        profileImage: formData.profileImage, // This will be handled by the backend
       };
 
-      console.log("Creating patient profile:", userData);
-
-      // Call Supabase API to create/update user profile
-      const response = await fetch("/api/user/profile", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(userData),
+      // Add non-array fields to FormData
+      Object.entries(formFields).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+          formDataToSend.append(key, value.toString());
+        }
       });
 
+      // Add profile image if it exists
+      if (formData.profileImage) {
+        console.log('Processing profile image for upload:', {
+          type: typeof formData.profileImage,
+          isFile: formData.profileImage instanceof File,
+          name: formData.profileImage.name,
+          size: formData.profileImage.size
+        });
+        formDataToSend.append('profileImage', formData.profileImage);
+      }
+
+      console.log("Submitting patient profile...");
+
+      // Call Supabase API to create/update user profile with FormData
+      const response = await fetch("/api/user/profile", {
+        method: "POST",
+        body: formDataToSend,
+        // Don't set Content-Type header - let the browser set it with the correct boundary
+      });
+
+      const responseData = await response.json();
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to create profile");
+        const errorMessage = responseData.error || "Failed to create profile";
+        console.error('Server error:', errorMessage);
+        throw new Error(errorMessage);
       }
 
       // Show success message
@@ -462,7 +512,6 @@ export default function PatientOnboardingPage() {
                   <SelectContent>
                     <SelectItem value="male">Male</SelectItem>
                     <SelectItem value="female">Female</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
                     <SelectItem value="prefer-not-to-say">
                       Prefer not to say
                     </SelectItem>
@@ -574,66 +623,58 @@ export default function PatientOnboardingPage() {
               </p>
             </div>
 
-            <div className="flex flex-col items-center space-y-6">
-              <div className="relative">
-                <div className="w-32 h-32 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center overflow-hidden">
-                  {profileImage ? (
-                    <Image
-                      width={16}
-                      height={16}
-                      src={profileImage || "/placeholder.svg"}
-                      alt="Profile"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <User className="w-16 h-16 text-gray-400" />
-                  )}
-                </div>
-                <label
-                  htmlFor="profileImage"
-                  className="absolute bottom-0 right-0 w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center cursor-pointer hover:bg-blue-700 transition-colors"
-                >
-                  <Camera className="w-5 h-5 text-white" />
-                  <input
-                    id="profileImage"
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageUpload}
-                    className="hidden"
-                  />
-                </label>
-              </div>
-
-              <div className="text-center">
-                <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
-                  Upload a clear photo of yourself
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Supported formats: JPG, PNG, GIF (max 5MB)
-                </p>
-              </div>
-
-              {!profileImage && (
-                <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center w-full max-w-md">
-                  <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <label htmlFor="profileImageDrop" className="cursor-pointer">
-                    <span className="text-blue-600 hover:text-blue-700 font-medium">
-                      Click to upload
-                    </span>
-                    <span className="text-gray-600 dark:text-gray-300">
-                      {" "}
-                      or drag and drop
-                    </span>
-                    <input
-                      id="profileImageDrop"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                      className="hidden"
-                    />
-                  </label>
+            <div className="space-y-4">
+              {formData.profileImage && (
+                <div className="flex justify-center mb-4">
+                  <div className="relative w-full max-w-xs">
+                    <div className="w-32 h-32 rounded-full bg-gray-100 dark:bg-gray-700 mx-auto overflow-hidden">
+                      <Image
+                        src={profileImage || "/placeholder.svg"}
+                        alt="Profile"
+                        width={128}
+                        height={128}
+                        className="w-full h-full object-cover"
+                        onLoad={(e) => {
+                          if (formData.profileImage instanceof File) {
+                            URL.revokeObjectURL(e.currentTarget.src);
+                          }
+                        }}
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
+
+              {errors.profileImage && (
+                <p className="text-sm text-red-600 text-center mt-2">
+                  {errors.profileImage}
+                </p>
+              )}
+
+              <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center">
+                <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="font-medium text-gray-900 dark:text-white mb-2">
+                  Upload Profile Photo
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
+                  Add a clear photo of yourself
+                </p>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  className="hidden"
+                  id="profileImage"
+                />
+                <label htmlFor="profileImage">
+                  <Button variant="outline" asChild>
+                    <span className="cursor-pointer">Choose Photo</span>
+                  </Button>
+                </label>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                  Supported formats: JPG, PNG (max 1MB)
+                </p>
+              </div>
             </div>
           </motion.div>
         );

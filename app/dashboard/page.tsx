@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import {
   Calendar,
   Clock,
@@ -17,114 +17,111 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import Image from "next/image";
+import { useUserProfile, getInitials } from "@/hooks/useUserProfile";
 
-interface UserProfile {
-  id: string;
-  email: string;
-  user_type: string;
-  profile_image?: string;
-  detailedProfile?: {
-    first_name?: string;
-    last_name?: string;
-    pharmacy_name?: string;
-    contact_person_first_name?: string;
-    contact_person_last_name?: string;
-  };
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <Skeleton className="h-8 w-64" />
+        <div className="flex items-center space-x-4">
+          <Skeleton className="h-10 w-10 rounded-full" />
+          <Skeleton className="h-10 w-10 rounded-full" />
+          <Skeleton className="h-10 w-10 rounded-full" />
+        </div>
+      </div>
+      <Skeleton className="h-24 w-full rounded-lg" />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <Skeleton className="h-32 rounded-lg" />
+        <Skeleton className="h-32 rounded-lg" />
+        <Skeleton className="h-32 rounded-lg" />
+      </div>
+      <Skeleton className="h-64 w-full rounded-lg" />
+    </div>
+  );
 }
 
 export default function Dashboard() {
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { userProfile, loading, error, isAuthenticated } = useUserProfile();
+  const [avatarSrc, setAvatarSrc] = useState<string | undefined>();
 
+  // Handle avatar image loading state
   useEffect(() => {
-    const fetchUserProfile = async () => {
-      try {
-        // Get email from localStorage or session
-        const email =
-          localStorage.getItem("userEmail") ||
-          sessionStorage.getItem("userEmail");
+    if (userProfile?.profile_image) {
+      // Ensure the URL is properly formatted
+      const imageUrl = userProfile.profile_image.startsWith("http")
+        ? userProfile.profile_image
+        : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/profile_images/${userProfile.profile_image}`;
 
-        if (!email) {
-          console.log("No email found, using default profile");
-          setLoading(false);
-          return;
-        }
+      const img = new window.Image();
+      img.src = imageUrl;
+      img.onload = () => setAvatarSrc(imageUrl);
+      img.onerror = () => {
+        console.error("Failed to load profile image:", imageUrl);
+        setAvatarSrc(undefined);
+      };
+    } else {
+      setAvatarSrc(undefined);
+    }
+  }, [userProfile?.profile_image]);
 
-        const response = await fetch(
-          `/api/user/profile/get?email=${encodeURIComponent(email)}`
-        );
-        const data = await response.json();
+  // Handle redirect to sign-in if not authenticated and not loading
+  useEffect(() => {
+    // Only redirect if we're not loading and we're sure the user is not authenticated
+    if (!loading) {
+      if (isAuthenticated) {
+        console.log("User is authenticated, showing dashboard");
+      } else {
+        console.log("User is not authenticated, will redirect to sign-in");
+        const timer = setTimeout(() => {
+          console.log("Executing redirect to sign-in");
+          window.location.href = "/signin?redirectedFrom=dashboard";
+        }, 1000);
 
-        if (data.success) {
-          setUserProfile(data.user);
-        } else {
-          console.error("Failed to fetch user profile:", data.error);
-        }
-      } catch (error) {
-        console.error("Error fetching user profile:", error);
-      } finally {
-        setLoading(false);
+        return () => clearTimeout(timer);
       }
-    };
-
-    fetchUserProfile();
-  }, []);
-
-  // Get display name based on user type
-  const getDisplayName = () => {
-    if (!userProfile) return "User";
-
-    if (
-      userProfile.user_type === "pharmacy" &&
-      userProfile.detailedProfile?.pharmacy_name
-    ) {
-      return userProfile.detailedProfile.pharmacy_name;
     }
+  }, [loading, isAuthenticated, userProfile]);
 
-    if (
-      userProfile.detailedProfile?.first_name &&
-      userProfile.detailedProfile?.last_name
-    ) {
-      return `${userProfile.detailedProfile.first_name} ${userProfile.detailedProfile.last_name}`;
-    }
+  if (loading) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <DashboardSkeleton />
+      </div>
+    );
+  }
 
-    if (userProfile.detailedProfile?.first_name) {
-      return userProfile.detailedProfile.first_name;
-    }
-
-    return "User";
-  };
-
-  // Get initials for avatar fallback
-  const getInitials = () => {
-    if (!userProfile) return "U";
-
-    if (
-      userProfile.user_type === "pharmacy" &&
-      userProfile.detailedProfile?.pharmacy_name
-    ) {
-      return userProfile.detailedProfile.pharmacy_name
-        .substring(0, 2)
-        .toUpperCase();
-    }
-
-    if (
-      userProfile.detailedProfile?.first_name &&
-      userProfile.detailedProfile?.last_name
-    ) {
-      return `${userProfile.detailedProfile.first_name[0]}${userProfile.detailedProfile.last_name[0]}`.toUpperCase();
-    }
-
-    if (userProfile.detailedProfile?.first_name) {
-      return userProfile.detailedProfile.first_name[0].toUpperCase();
-    }
-
-    return "U";
-  };
-
-  // const [activeTab, setActiveTab] = useState("overview")
+  if (error) {
+    console.error("Error loading user profile:", error);
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
+          <h2 className="text-xl font-semibold text-red-800 mb-2">
+            {userProfile ? "Profile Error" : "Authentication Error"}
+          </h2>
+          <p className="text-red-600 mb-4">
+            {userProfile
+              ? "There was an error loading your profile data."
+              : "You need to be signed in to access the dashboard."}
+          </p>
+          <div className="flex justify-center gap-4">
+            <Button onClick={() => window.location.reload()} variant="outline">
+              Try Again
+            </Button>
+            <Button
+              onClick={() => (window.location.href = "/signin")}
+              variant="destructive"
+            >
+              {userProfile ? "Update Profile" : "Sign In"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const upcomingAppointments = [
     {
@@ -205,7 +202,7 @@ export default function Dashboard() {
               className="h-8 w-auto"
             />
             <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-              Dashboard
+              {userProfile?.user_type ? `${userProfile.user_type.charAt(0).toUpperCase() + userProfile.user_type.slice(1)} Dashboard` : 'Dashboard'}
             </h1>
           </div>
 
@@ -218,12 +215,15 @@ export default function Dashboard() {
             </Button>
             <Avatar>
               <AvatarImage
-                src={
-                  userProfile?.profile_image ||
-                  "/placeholder.svg?height=32&width=32"
-                }
+                src={avatarSrc}
+                alt={userProfile?.full_name || "User"}
+                className="object-cover"
               />
-              <AvatarFallback>{getInitials()}</AvatarFallback>
+              <AvatarFallback>
+                {userProfile?.full_name
+                  ? getInitials(userProfile.full_name)
+                  : "U"}
+              </AvatarFallback>
             </Avatar>
           </div>
         </div>
@@ -237,7 +237,7 @@ export default function Dashboard() {
           className="mb-8"
         >
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
-            Welcome back, {loading ? "..." : getDisplayName()}! 👋
+            Welcome back, {userProfile?.first_name || "User"} 👋
           </h2>
           <p className="text-gray-600 dark:text-gray-300">
             Here&apos;s what&apos;s happening with your health today.

@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
-  Heart,
   Stethoscope,
   Store,
   User,
@@ -80,19 +79,19 @@ export default function AccountTypeSelectionPage() {
         "USDC payments",
       ],
     },
-    {
-      type: "admin" as const,
-      title: "Admin",
-      description: "Manage platform operations, users, and system settings",
-      icon: Shield,
-      color: "red",
-      features: [
-        "User management",
-        "Platform monitoring",
-        "System settings",
-        "Analytics dashboard",
-      ],
-    },
+    // {
+    //   type: "admin" as const,
+    //   title: "Admin",
+    //   description: "Manage platform operations, users, and system settings",
+    //   icon: Shield,
+    //   color: "red",
+    //   features: [
+    //     "User management",
+    //     "Platform monitoring",
+    //     "System settings",
+    //     "Analytics dashboard",
+    //   ],
+    // },
   ];
 
   const web3Services = useW3s();

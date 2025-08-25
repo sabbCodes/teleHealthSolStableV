@@ -153,23 +153,31 @@ export default function SignInPage() {
 
         setAuthState("redirecting");
 
-        if (toast) {
-          toast({
-            title: "Welcome back!",
-            description: "Redirecting to your dashboard...",
-          });
-        } else {
-          alert("Welcome back! Redirecting to your dashboard...");
-        }
-
         // Check if user has a profile
         const { user } = await AuthService.getCurrentUser();
 
         if (user?.user_type) {
+          // User has a profile, redirect to dashboard
           const dashboardRoute = getDashboardRoute(user.user_type);
+
+          // Show dashboard redirection message
+          if (toast) {
+            toast({
+              title: "Welcome back!",
+              description: `Redirecting to your ${user.user_type} dashboard...`,
+            });
+          }
+
           router.push(dashboardRoute);
         } else {
           // User needs to complete onboarding
+          if (toast) {
+            toast({
+              title: "Account setup required",
+              description: "Please complete your account setup to continue.",
+            });
+          }
+
           router.push(
             `/account-type-selection?email=${encodeURIComponent(email)}`
           );
@@ -237,7 +245,7 @@ export default function SignInPage() {
                 </p>
               </div>
             ),
-            duration: 8000, // Show for 8 seconds
+            duration: 8000,
           });
         } else {
           alert(
@@ -317,7 +325,7 @@ export default function SignInPage() {
       case "checking-user":
         return "Checking your account...";
       case "redirecting":
-        return "Redirecting to your dashboard...";
+        return "Redirecting to next step...";
       default:
         return "";
     }

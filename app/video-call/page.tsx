@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { motion } from "framer-motion"
+import { useState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
+import { motion } from "framer-motion";
 import {
   Video,
   VideoOff,
@@ -13,20 +14,41 @@ import {
   Share,
   Clock,
   FileText,
-  Camera,
   Monitor,
-} from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { useWebRTC } from "@/hooks/useWebRTC";
+import { useToast } from "@/hooks/use-toast";
 
 export default function VideoCallPage() {
-  const [isVideoOn, setIsVideoOn] = useState(true)
-  const [isAudioOn, setIsAudioOn] = useState(true)
-  const [isCallActive, setIsCallActive] = useState(true)
-  const [callDuration, setCallDuration] = useState(0)
-  const [showChat, setShowChat] = useState(false)
+  const searchParams = useSearchParams();
+  const appointmentId = searchParams?.get("appointmentId") || "";
+  const roleParam = (searchParams?.get("role") as "doctor" | "patient") || "patient";
+
+  const [isVideoOn, setIsVideoOn] = useState(true);
+  const [isAudioOn, setIsAudioOn] = useState(true);
+  const [isCallActiveOverlay, setIsCallActiveOverlay] = useState(true);
+  const [callDuration, setCallDuration] = useState(0);
+  const [showChat, setShowChat] = useState(false);
+
+  const localVideoRefLg = useRef<HTMLVideoElement | null>(null);
+  const localVideoRefSm = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const { toast } = useToast();
+
+  const {
+    localStream,
+    remoteStream,
+    // isConnected,
+    connectionStatus,
+    isCallActive,
+    toggleAudio,
+    toggleVideo,
+    endCall: endCallHook,
+    error,
+  } = useWebRTC(roleParam, appointmentId);
 
   useEffect(() => {
     if (isCallActive) {
@@ -44,42 +66,97 @@ export default function VideoCallPage() {
   }
 
   const endCall = () => {
-    setIsCallActive(false)
-    // Redirect to payment/review page
+    endCallHook();
+    setIsCallActiveOverlay(false)
+
+    const redirectPath = roleParam === 'doctor' ? '/doctor-dashboard' : '/dashboard';
+
     setTimeout(() => {
-      window.location.href = "/payment"
+      window.location.href = redirectPath;
     }, 1000)
   }
+
+  // Attach streams to video elements
+  useEffect(() => {
+    if (localStream) {
+      try {
+        if (localVideoRefLg.current) {
+          localVideoRefLg.current.srcObject = localStream;
+          localVideoRefLg.current.muted = true;
+          void localVideoRefLg.current.play().catch(() => {});
+        }
+        if (localVideoRefSm.current) {
+          localVideoRefSm.current.srcObject = localStream;
+          localVideoRefSm.current.muted = true;
+          void localVideoRefSm.current.play().catch(() => {});
+        }
+      } catch {}
+    }
+  }, [localStream]);
+
+  useEffect(() => {
+    if (remoteVideoRef.current && remoteStream) {
+      try {
+        remoteVideoRef.current.srcObject = remoteStream;
+        remoteVideoRef.current.muted = false;
+        void remoteVideoRef.current.play().catch(() => {});
+      } catch {}
+    }
+  }, [remoteStream]);
+
+  // Surface errors as toasts instead of in-page banner
+  useEffect(() => {
+    if (error) {
+      toast({ title: "Call error", description: String(error) });
+    }
+  }, [error, toast]);
+
+  // Optional: notify on connect/disconnect
+  useEffect(() => {
+    if (connectionStatus === "connected") {
+      toast({ title: "Connected", description: "You are now connected." });
+    } else if (connectionStatus === "error") {
+      toast({ title: "Connection issue", description: "There was a problem with the call." });
+    }
+  }, [connectionStatus, toast]);
+
+  const statusColor =
+    connectionStatus === 'connected'
+      ? 'bg-green-500'
+      : connectionStatus === 'connecting'
+      ? 'bg-yellow-500'
+      : connectionStatus === 'error'
+      ? 'bg-red-500'
+      : 'bg-gray-400';
 
   return (
     <div className="min-h-screen bg-gray-900 relative overflow-hidden">
       {/* Background Video Areas */}
       <div className="absolute inset-0 grid grid-cols-1 lg:grid-cols-2 gap-4 p-4">
-        {/* Doctor's Video */}
+        {/* Remote Participant Video */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="relative bg-gray-800 rounded-xl overflow-hidden"
+          className="relative bg-gray-800 rounded-xl overflow-hidden h-[85vh] lg:h-[80vh]"
         >
-          <div className="absolute inset-0 bg-gradient-to-br from-blue-600/20 to-green-600/20" />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <Avatar className="w-32 h-32">
-              <AvatarImage src="/placeholder.svg?height=128&width=128" />
-              <AvatarFallback className="text-2xl">AO</AvatarFallback>
-            </Avatar>
-          </div>
+          <video
+            ref={remoteVideoRef}
+            className="absolute inset-0 w-full h-full object-cover bg-black z-0"
+            autoPlay
+            playsInline
+          />
 
-          {/* Doctor Info Overlay */}
-          <div className="absolute top-4 left-4">
+          {/* Participant Info Overlay */}
+          <div className="absolute top-4 left-4 z-10 pointer-events-none">
             <div className="bg-black/50 backdrop-blur-sm rounded-lg p-3">
-              <h3 className="text-white font-semibold">Dr. Adaora Okafor</h3>
-              <p className="text-gray-300 text-sm">Cardiologist</p>
-              <Badge className="mt-1 bg-green-600">Online</Badge>
+              <h3 className="text-white font-semibold">{roleParam === 'doctor' ? 'Patient' : 'Doctor'}</h3>
+              <p className="text-gray-300 text-sm">{roleParam === 'doctor' ? 'Participant' : 'Consultant'}</p>
+              <Badge className="mt-1 bg-green-600">{connectionStatus}</Badge>
             </div>
           </div>
 
           {/* Call Duration */}
-          <div className="absolute top-4 right-4">
+          <div className="absolute top-4 right-4 z-10 pointer-events-none">
             <div className="bg-black/50 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-2">
               <Clock className="w-4 h-4 text-white" />
               <span className="text-white font-mono">{formatTime(callDuration)}</span>
@@ -87,31 +164,24 @@ export default function VideoCallPage() {
           </div>
         </motion.div>
 
-        {/* Patient's Video (Self) */}
+        {/* Local Self Video */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.1 }}
-          className="relative bg-gray-800 rounded-xl overflow-hidden lg:block hidden"
+          className="relative bg-gray-800 rounded-xl overflow-hidden lg:block hidden h-[40vh] lg:h-[80vh]"
         >
-          <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 to-pink-600/20" />
-          <div className="absolute inset-0 flex items-center justify-center">
-            {isVideoOn ? (
-              <div className="text-white text-center">
-                <Camera className="w-16 h-16 mx-auto mb-2 opacity-50" />
-                <p className="opacity-75">Your video</p>
-              </div>
-            ) : (
-              <div className="text-white text-center">
-                <VideoOff className="w-16 h-16 mx-auto mb-2 opacity-50" />
-                <p className="opacity-75">Video off</p>
-              </div>
-            )}
-          </div>
+          <video
+            ref={localVideoRefLg}
+            className="absolute inset-0 w-full h-full object-cover bg-black z-0"
+            autoPlay
+            playsInline
+            muted
+          />
 
-          <div className="absolute top-4 left-4">
+          <div className="absolute top-4 left-4 z-10 pointer-events-none">
             <div className="bg-black/50 backdrop-blur-sm rounded-lg p-2">
-              <span className="text-white text-sm">You</span>
+              <span className="text-white text-sm">You ({roleParam})</span>
             </div>
           </div>
         </motion.div>
@@ -119,13 +189,13 @@ export default function VideoCallPage() {
 
       {/* Mobile Self Video (Picture-in-Picture) */}
       <div className="lg:hidden absolute top-4 right-4 w-32 h-24 bg-gray-800 rounded-lg overflow-hidden z-10">
-        <div className="absolute inset-0 flex items-center justify-center">
-          {isVideoOn ? (
-            <Camera className="w-8 h-8 text-white opacity-50" />
-          ) : (
-            <VideoOff className="w-8 h-8 text-white opacity-50" />
-          )}
-        </div>
+        <video
+          ref={localVideoRefSm}
+          className="w-full h-full object-cover bg-black"
+          autoPlay
+          playsInline
+          muted
+        />
       </div>
 
       {/* Control Panel */}
@@ -144,7 +214,11 @@ export default function VideoCallPage() {
                   variant={isAudioOn ? "secondary" : "destructive"}
                   size="lg"
                   className="rounded-full w-12 h-12"
-                  onClick={() => setIsAudioOn(!isAudioOn)}
+                  onClick={() => {
+                    toggleAudio();
+                    setIsAudioOn(!isAudioOn);
+                  }}
+                  disabled={connectionStatus !== "connected" && connectionStatus !== "connecting"}
                 >
                   {isAudioOn ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
                 </Button>
@@ -156,7 +230,11 @@ export default function VideoCallPage() {
                   variant={isVideoOn ? "secondary" : "destructive"}
                   size="lg"
                   className="rounded-full w-12 h-12"
-                  onClick={() => setIsVideoOn(!isVideoOn)}
+                  onClick={() => {
+                    toggleVideo();
+                    setIsVideoOn(!isVideoOn);
+                  }}
+                  disabled={connectionStatus !== "connected" && connectionStatus !== "connecting"}
                 >
                   {isVideoOn ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
                 </Button>
@@ -219,13 +297,15 @@ export default function VideoCallPage() {
       {/* Connection Status */}
       <div className="absolute top-4 left-4">
         <div className="bg-black/50 backdrop-blur-sm rounded-lg p-2 flex items-center space-x-2">
-          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-          <span className="text-white text-sm">Connected</span>
+          <div className={`w-2 h-2 rounded-full animate-pulse ${statusColor}`} />
+          <span className="text-white text-sm capitalize">{connectionStatus}</span>
+          <span className="text-white/70 text-xs ml-2">Appt: {appointmentId || "(missing)"}</span>
+          <span className="text-white/70 text-xs ml-2">Role: {roleParam}</span>
         </div>
       </div>
 
       {/* Call End Animation */}
-      {!isCallActive && (
+      {!isCallActiveOverlay && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -239,7 +319,7 @@ export default function VideoCallPage() {
             <p className="text-gray-300 mb-4">Duration: {formatTime(callDuration)}</p>
             <div className="space-y-2">
               <div className="w-8 h-1 bg-white/30 rounded mx-auto animate-pulse" />
-              <p className="text-sm">Redirecting to payment...</p>
+              <p className="text-sm">Redirecting to {roleParam === "doctor" ? "your dashboard" : "payment release page"}...</p>
             </div>
           </div>
         </motion.div>

@@ -2,6 +2,7 @@
 
 import type React from "react"
 import { useState, useEffect, useRef } from "react"
+import { useSearchParams } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Send,
@@ -27,6 +28,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import Link from "next/link"
+import { supabase } from "@/lib/supabase"
+import { formatName } from "@/lib/utils"
 
 export default function PatientChatPage() {
   const [selectedChat, setSelectedChat] = useState(1)
@@ -34,6 +37,35 @@ export default function PatientChatPage() {
   const [isRecording, setIsRecording] = useState(false)
   const [showSidebar, setShowSidebar] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const searchParams = useSearchParams()
+
+  // Chat state from Supabase
+  const [appointmentId, setAppointmentId] = useState<string | null>(null)
+  const [schedule, setSchedule] = useState<null | {
+    id: string
+    doctor_id: string
+    patient_id: string
+  }>(null)
+  const [authUserId, setAuthUserId] = useState<string | null>(null)
+  const [doctorUserId, setDoctorUserId] = useState<string | null>(null)
+  const [patientUserId, setPatientUserId] = useState<string | null>(null)
+  const [doctorProfile, setDoctorProfile] = useState<
+    | null
+    | { first_name: string | null; last_name: string | null; profile_image: string | null; specialization: string | null }
+  >(null)
+  const [messages, setMessages] = useState<
+    { id: string; sender: "doctor" | "patient"; content: string; timestamp: string; type: "text" | "file" }[]
+  >([])
+
+  // Supabase messages row type
+  type MessageRow = {
+    id: string
+    appointment_id: string
+    sender_id: string
+    receiver_id: string
+    content: string
+    created_at: string
+  }
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -42,6 +74,142 @@ export default function PatientChatPage() {
   useEffect(() => {
     scrollToBottom()
   }, [selectedChat])
+
+  // Also scroll when new messages arrive
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages])
+
+  // Read appointment ID from search params
+  useEffect(() => {
+    const possibleKeys = ["appointmentId", "appointment_id", "scheduleId", "schedule_id", "id"] as const
+    for (const key of possibleKeys) {
+      const v = searchParams.get(key as string)
+      if (v) {
+        setAppointmentId(v)
+        break
+      }
+    }
+  }, [searchParams])
+
+  // Get auth user id
+  useEffect(() => {
+    let isMounted = true
+    ;(async () => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (isMounted) setAuthUserId(user?.id ?? null)
+    })()
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  // Fetch schedule once appointmentId is available
+  useEffect(() => {
+    if (!appointmentId) return
+    let cancelled = false
+    ;(async () => {
+      const { data, error } = await supabase.from("schedules").select("id, doctor_id, patient_id").eq("id", appointmentId).single()
+      if (error) {
+        console.error("Failed to fetch schedule:", error)
+        return
+      }
+      if (!cancelled) setSchedule(data)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [appointmentId])
+
+  // After schedule, resolve doctor/patient to their user_profile_ids
+  useEffect(() => {
+    if (!schedule) return
+    let cancelled = false
+    ;(async () => {
+      const [{ data: d, error: de }, { data: p, error: pe }] = await Promise.all([
+        supabase
+          .from("doctor_profiles")
+          .select("user_profile_id, first_name, last_name, profile_image, specialization")
+          .eq("id", schedule.doctor_id)
+          .single(),
+        supabase.from("patient_profiles").select("user_profile_id").eq("id", schedule.patient_id).single(),
+      ])
+      if (de) console.error("Failed to fetch doctor user id:", de)
+      if (pe) console.error("Failed to fetch patient user id:", pe)
+      if (cancelled) return
+      setDoctorUserId(d?.user_profile_id ?? null)
+      setPatientUserId(p?.user_profile_id ?? null)
+      setDoctorProfile({
+        first_name: (d as any)?.first_name ?? null,
+        last_name: (d as any)?.last_name ?? null,
+        profile_image: (d as any)?.profile_image ?? null,
+        specialization: (d as any)?.specialization ?? null,
+      })
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [schedule])
+
+  // Load messages and subscribe to realtime
+  useEffect(() => {
+    if (!appointmentId) return
+    let cancelled = false
+
+    const loadMessages = async () => {
+      const { data, error } = await supabase
+        .from("messages")
+        .select("id, appointment_id, sender_id, receiver_id, content, created_at")
+        .eq("appointment_id", appointmentId)
+        .order("created_at", { ascending: true })
+      if (error) {
+        console.error("Failed to load messages:", error)
+        return
+      }
+      if (!data || cancelled) return
+      const mapped = (data as unknown as MessageRow[]).map((m) => ({
+        id: m.id,
+        sender: m.sender_id === doctorUserId ? "doctor" : "patient",
+        content: m.content,
+        timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        type: "text" as const,
+      }))
+      setMessages(mapped)
+    }
+
+    loadMessages()
+
+    const channel = supabase
+      .channel(`messages-appointment-${appointmentId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages", filter: `appointment_id=eq.${appointmentId}` },
+        (payload) => {
+          const m = payload.new as MessageRow
+          setMessages((prev) => {
+            if (prev.some((pm) => pm.id === m.id)) return prev
+            return [
+              ...prev,
+              {
+                id: m.id,
+                sender: m.sender_id === doctorUserId ? "doctor" : "patient",
+                content: m.content,
+                timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                type: "text",
+              },
+            ]
+          })
+        }
+      )
+      .subscribe()
+
+    return () => {
+      cancelled = true
+      supabase.removeChannel(channel)
+    }
+  }, [appointmentId, doctorUserId])
 
   const doctors = [
     {
@@ -76,55 +244,53 @@ export default function PatientChatPage() {
     },
   ]
 
-  const messages = [
-    {
-      id: 1,
-      sender: "doctor",
-      content: "Hello! How are you feeling today?",
-      timestamp: "10:30 AM",
-      type: "text",
-    },
-    {
-      id: 2,
-      sender: "patient",
-      content: "Hi Doctor, I'm feeling much better since starting the medication.",
-      timestamp: "10:32 AM",
-      type: "text",
-    },
-    {
-      id: 3,
-      sender: "doctor",
-      content: "That's great to hear! Any side effects?",
-      timestamp: "10:33 AM",
-      type: "text",
-    },
-    {
-      id: 4,
-      sender: "patient",
-      content: "No side effects so far. Should I continue with the same dosage?",
-      timestamp: "10:35 AM",
-      type: "text",
-    },
-    {
-      id: 5,
-      sender: "doctor",
-      content: "Yes, continue for another week. I've uploaded your test results to your medical records.",
-      timestamp: "10:37 AM",
-      type: "text",
-    },
-    {
-      id: 6,
-      sender: "doctor",
-      content: "blood_test_results.pdf",
-      timestamp: "10:37 AM",
-      type: "file",
-    },
-  ]
+  // messages are now managed from Supabase state above
 
-  const sendMessage = () => {
-    if (message.trim()) {
-      console.log("Sending message:", message)
-      setMessage("")
+  const sendMessage = async () => {
+    if (!message.trim() || !appointmentId || !authUserId || !doctorUserId || !patientUserId) return
+    const isPatient = authUserId === patientUserId
+    const payload = {
+      appointment_id: appointmentId,
+      sender_id: authUserId,
+      receiver_id: isPatient ? doctorUserId : patientUserId,
+      content: message.trim(),
+    }
+    // Optimistic UI
+    const tempId = `temp-${Date.now()}`
+    const optimistic = {
+      id: tempId,
+      sender: isPatient ? "patient" as const : "doctor" as const,
+      content: payload.content,
+      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      type: "text" as const,
+    }
+    setMessages((prev) => [...prev, optimistic])
+    setMessage("")
+
+    const { data, error } = await supabase
+      .from("messages")
+      .insert(payload)
+      .select("id, created_at, sender_id")
+      .single()
+    if (error) {
+      console.error("Failed to send message:", error)
+      setMessages((prev) => prev.filter((m) => m.id !== tempId))
+      return
+    }
+    if (data) {
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === tempId
+            ? {
+                id: data.id as string,
+                sender: data.sender_id === doctorUserId ? "doctor" : "patient",
+                content: optimistic.content,
+                timestamp: new Date(String(data.created_at)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+                type: "text",
+              }
+            : m
+        )
+      )
     }
   }
 
@@ -136,6 +302,16 @@ export default function PatientChatPage() {
   }
 
   const selectedDoctor = doctors.find((doctor) => doctor.id === selectedChat)
+  const headerDoctorName = doctorProfile
+    ? `${formatName(doctorProfile.first_name ?? "")} ${formatName(doctorProfile.last_name ?? "")}`.trim() || "Doctor"
+    : selectedDoctor?.name
+  const headerDoctorAvatar = doctorProfile?.profile_image || selectedDoctor?.avatar || "/placeholder.svg"
+  const headerDoctorInitials = (headerDoctorName || "")
+    .split(" ")
+    .filter(Boolean)
+    .map((n) => n[0])
+    .join("")
+  const headerDoctorSpecialty = doctorProfile?.specialization || selectedDoctor?.specialty
 
   return (
     <div className="h-screen bg-gray-50 dark:bg-gray-900 flex relative">
@@ -242,13 +418,8 @@ export default function PatientChatPage() {
 
                   <div className="relative">
                     <Avatar>
-                      <AvatarImage src={selectedDoctor.avatar || "/placeholder.svg"} />
-                      <AvatarFallback>
-                        {selectedDoctor.name
-                          .split(" ")
-                          .map((n) => n[0])
-                          .join("")}
-                      </AvatarFallback>
+                      <AvatarImage src={headerDoctorAvatar} />
+                      <AvatarFallback>{headerDoctorInitials}</AvatarFallback>
                     </Avatar>
                     {selectedDoctor.online && (
                       <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 border-2 border-white dark:border-gray-800 rounded-full"></div>
@@ -256,10 +427,10 @@ export default function PatientChatPage() {
                   </div>
 
                   <div>
-                    <h2 className="font-semibold text-gray-900 dark:text-white">{selectedDoctor.name}</h2>
+                    <h2 className="font-semibold text-gray-900 dark:text-white">Dr. {headerDoctorName}</h2>
                     <div className="flex items-center space-x-2">
                       <Stethoscope className="w-4 h-4 text-blue-600" />
-                      <span className="text-sm text-gray-600 dark:text-gray-300">{selectedDoctor.specialty}</span>
+                      <span className="text-sm text-gray-600 dark:text-gray-300">{headerDoctorSpecialty}</span>
                       {selectedDoctor.online && <span className="text-sm text-green-600">• Online</span>}
                     </div>
                   </div>

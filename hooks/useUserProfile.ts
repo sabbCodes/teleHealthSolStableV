@@ -11,22 +11,35 @@ type UserProfile = Database['public']['Tables']['user_profiles']['Row'] & {
   last_name?: string;
   full_name?: string;
   email?: string;
+  wallet_address?: string;
 };
 
-export function useUserProfile() {
+interface UseUserProfileReturn {
+  userProfile: UserProfile | null;
+  loading: boolean;
+  error: string | null;
+  isAuthenticated: boolean;
+}
+
+export function useUserProfile(): UseUserProfileReturn {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
   const fetchUserProfile = async (session: Session | null = null) => {
-    try {
-      console.log('Starting to fetch user profile...');
-      setLoading(true);
-      setError(null);
-      
-      if (!session) {
-        const { data: { session: currentSession } } = await supabase.auth.getSession();
+    console.log('fetchUserProfile called with session:', session ? 'session exists' : 'no session');
+    
+    if (!session) {
+      console.log('No session provided, trying to get current session...');
+      try {
+        const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('Error getting session:', sessionError);
+          throw sessionError;
+        }
+        
         if (!currentSession) {
           console.warn('No active session found');
           setUserProfile(null);
@@ -35,14 +48,51 @@ export function useUserProfile() {
           setLoading(false);
           return;
         }
+        
         session = currentSession;
+        console.log('Retrieved current session successfully');
+      } catch (error) {
+        console.error('Error in session retrieval:', error);
+        setError('Failed to retrieve session');
+        setLoading(false);
+        return;
+      }
+    }
+
+    try {
+      console.log('Starting to fetch user profile...');
+      setLoading(true);
+      setError(null);
+      
+      // Small delay to prevent UI flickering
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Double check session is still valid
+      if (!session) {
+        console.warn('Session lost during fetch, trying to recover...');
+        const { data: { session: currentSession }, error: sessionCheckError } = await supabase.auth.getSession();
+        
+        if (sessionCheckError || !currentSession) {
+          console.error('Session recovery failed:', sessionCheckError || 'No session found');
+          setUserProfile(null);
+          setIsAuthenticated(false);
+          setError('Session expired. Please sign in again.');
+          setLoading(false);
+          return;
+        }
+        
+        session = currentSession;
+        console.log('Session recovered successfully');
       }
 
       // Get the current user
+      console.log('Fetching user from auth...');
       const { data: { user }, error: userError } = await supabase.auth.getUser();
+      console.log('User fetch result:', { user, userError });
 
       if (userError || !user) {
-        console.warn('No user found in session:', userError?.message);
+        const errorMsg = userError?.message || 'No user object returned';
+        console.warn('No user found in session:', errorMsg);
         setUserProfile(null);
         setIsAuthenticated(false);
         setError('User not found in session.');
@@ -52,25 +102,45 @@ export function useUserProfile() {
 
       // First, get the base user profile
       console.log('Fetching base user profile for user ID:', user.id);
-      const { data: userProfile, error: profileError } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-
-      if (profileError) {
-        console.error('Error fetching user profile:', profileError);
-        throw new Error('Failed to load user profile');
-      }
       
-      // Debug: Check the structure of the user profile
-      console.log('User profile structure:', {
-        id: userProfile.id,
-        email: userProfile.email,
-        user_type: userProfile.user_type,
-        created_at: userProfile.created_at,
-        rawData: userProfile
-      });
+      let userProfile;
+      let profileError;
+      
+      try {
+        const result = await supabase
+          .from('user_profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+          
+        userProfile = result.data;
+        profileError = result.error;
+        
+        console.log('Base profile query result:', { userProfile, profileError });
+
+        if (profileError) {
+          console.error('Error fetching user profile:', profileError);
+          throw new Error(`Failed to load user profile: ${profileError.message}`);
+        }
+        
+        if (!userProfile) {
+          throw new Error('No profile data returned from database');
+        }
+      
+        // Debug: Check the structure of the user profile
+        console.log('User profile structure:', {
+          id: userProfile.id,
+          email: userProfile.email,
+          user_type: userProfile.user_type,
+          created_at: userProfile.created_at,
+          rawData: userProfile
+        });
+      } catch (error) {
+        console.error('Error in profile fetch:', error);
+        setError('Failed to load user profile');
+        setLoading(false);
+        return;
+      }
       
       console.log('Found base user profile:', {
         id: userProfile.id,
@@ -183,25 +253,62 @@ export function useUserProfile() {
   };
 
   useEffect(() => {
+    let isMounted = true;
+    
+    console.log('Setting up auth state change listener...');
     // Set up auth state change listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth state changed:', { event, hasSession: !!session });
       console.log('Auth state changed:', event);
+      if (!isMounted) return;
+      
       if (event === 'SIGNED_IN' && session) {
-        await fetchUserProfile(session);
+        try {
+          await fetchUserProfile(session);
+        } catch (error) {
+          console.error('Error in auth state change handler:', error);
+          if (isMounted) {
+            setError('Failed to load user profile');
+            setLoading(false);
+          }
+        }
       } else if (event === 'SIGNED_OUT') {
-        setUserProfile(null);
-        setIsAuthenticated(false);
-        setError('Please sign in to continue');
+        if (isMounted) {
+          setUserProfile(null);
+          setIsAuthenticated(false);
+          setError('Please sign in to continue');
+          setLoading(false);
+        }
       }
     });
 
     // Initial fetch
     const fetchInitialSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        await fetchUserProfile(session);
-      } else {
-        setLoading(false);
+      console.log('Starting initial session fetch...');
+      try {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('Error getting session:', sessionError);
+          throw sessionError;
+        }
+        
+        console.log('Initial session fetch result:', { hasSession: !!session });
+        
+        if (session) {
+          console.log('Session found, fetching user profile...');
+          await fetchUserProfile(session);
+        } else if (isMounted) {
+          console.log('No active session found');
+          setLoading(false);
+          setError('No active session found');
+        }
+      } catch (error) {
+        console.error('Error in initial session fetch:', error);
+        if (isMounted) {
+          setError('Failed to initialize session');
+          setLoading(false);
+        }
       }
     };
 
@@ -209,6 +316,7 @@ export function useUserProfile() {
 
     // Cleanup
     return () => {
+      isMounted = false;
       subscription?.unsubscribe();
     };
   }, []);
@@ -233,4 +341,3 @@ export function getInitials(name?: string): string {
     .toUpperCase()
     .substring(0, 2);
 }
-

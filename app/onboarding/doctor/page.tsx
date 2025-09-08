@@ -44,8 +44,8 @@ export default function DoctorOnboardingPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { toast } = useToast();
-  const email = searchParams.get("email") || "";
-  const walletAddress = searchParams.get("wallet") || "";
+  const email = searchParams?.get("email") || "";
+  const walletAddress = searchParams?.get("wallet") || "";
 
   const [currentStep, setCurrentStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});

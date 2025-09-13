@@ -3,7 +3,7 @@
 import type React from "react";
 
 import { useState, useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Mail,
@@ -40,7 +40,6 @@ type AuthState =
 
 export default function SignInPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { toast } = useToast();
 
   // Form States
@@ -57,51 +56,69 @@ export default function SignInPage() {
 
   // Check for auth callback
   useEffect(() => {
-    const handleAuthCallback = async () => {
-      const {
-        data: { session },
-        error,
-      } = await import("@/lib/supabase").then((m) =>
-        m.supabase.auth.getSession()
-      );
+    let unsubscribe: { data: { subscription: { unsubscribe: () => void } } } | null = null;
 
-      if (session && !error) {
-        // Check if user email is verified
-        const { isVerified } = await AuthService.checkEmailVerification();
+    const handleAuthAndRedirect = async () => {
+      // Check if user email is verified
+      const { isVerified } = await AuthService.checkEmailVerification();
 
-        if (!isVerified) {
-          toast({
-            title: "Email not verified",
-            description:
-              "Please check your email and click the verification link before signing in.",
-            variant: "destructive",
-          });
-          return;
-        }
+      if (!isVerified) {
+        toast({
+          title: "Email not verified",
+          description:
+            "Please check your email and click the verification link before signing in.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-        // User is authenticated and verified, check if they have a profile
-        const { user: authUser } = await AuthService.getCurrentUser();
+      // User is authenticated and verified, check if they have a profile
+      const { user: authUser } = await AuthService.getCurrentUser();
 
-        if (authUser?.user_type) {
-          // User has a profile, redirect to dashboard
-          const dashboardRoute = getDashboardRoute(authUser.user_type);
-          router.push(dashboardRoute);
-        } else {
-          // User needs to complete onboarding
-          router.push(
-            `/account-type-selection?email=${encodeURIComponent(
-              authUser?.email || ""
-            )}`
-          );
-        }
+      if (authUser?.user_type) {
+        // User has a profile, redirect to dashboard
+        const dashboardRoute = getDashboardRoute(authUser.user_type);
+        router.push(dashboardRoute);
+      } else {
+        // User needs to complete onboarding
+        router.push(
+          `/account-type-selection?email=${encodeURIComponent(
+            authUser?.email || ""
+          )}`
+        );
       }
     };
 
-    // Check if this is an auth callback
-    if (searchParams.get("access_token") || searchParams.get("refresh_token")) {
-      handleAuthCallback();
-    }
-  }, [searchParams, router, toast]);
+    const init = async () => {
+      const { supabase } = await import("@/lib/supabase");
+
+      // Check current session (Supabase may have already exchanged the OAuth code and removed params from URL)
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session) {
+        await handleAuthAndRedirect();
+      }
+
+      // Also listen for auth state changes to catch OAuth sign-in completion
+      unsubscribe = supabase.auth.onAuthStateChange(async (event) => {
+        if (event === "SIGNED_IN") {
+          await handleAuthAndRedirect();
+        }
+      }) as unknown as { data: { subscription: { unsubscribe: () => void } } };
+    };
+
+    init();
+
+    return () => {
+      try {
+        unsubscribe?.data.subscription.unsubscribe();
+      } catch (e) {
+        // ignore
+      }
+    };
+  }, [router, toast]);
 
   const getDashboardRoute = (userType: string) => {
     switch (userType) {
@@ -325,7 +342,7 @@ export default function SignInPage() {
       case "checking-user":
         return "Checking your account...";
       case "redirecting":
-        return "Redirecting to next step...";
+        return "Redirecting...";
       default:
         return "";
     }

@@ -84,7 +84,7 @@ export default function PatientChatPage() {
   useEffect(() => {
     const possibleKeys = ["appointmentId", "appointment_id", "scheduleId", "schedule_id", "id"] as const
     for (const key of possibleKeys) {
-      const v = searchParams.get(key as string)
+      const v = searchParams?.get(key as string)
       if (v) {
         setAppointmentId(v)
         break
@@ -142,10 +142,10 @@ export default function PatientChatPage() {
       setDoctorUserId(d?.user_profile_id ?? null)
       setPatientUserId(p?.user_profile_id ?? null)
       setDoctorProfile({
-        first_name: (d as any)?.first_name ?? null,
-        last_name: (d as any)?.last_name ?? null,
-        profile_image: (d as any)?.profile_image ?? null,
-        specialization: (d as any)?.specialization ?? null,
+        first_name: d?.first_name ?? null,
+        last_name: d?.last_name ?? null,
+        profile_image: d?.profile_image ?? null,
+        specialization: d?.specialization ?? null,
       })
     })()
     return () => {
@@ -169,13 +169,20 @@ export default function PatientChatPage() {
         return
       }
       if (!data || cancelled) return
-      const mapped = (data as unknown as MessageRow[]).map((m) => ({
-        id: m.id,
-        sender: m.sender_id === doctorUserId ? "doctor" : "patient",
-        content: m.content,
-        timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        type: "text" as const,
-      }))
+      const mapped = (data as unknown as MessageRow[]).map((m) => {
+        const sender: "doctor" | "patient" =
+          m.sender_id === doctorUserId ? "doctor" : "patient";
+        return {
+          id: m.id,
+          sender,
+          content: m.content,
+          timestamp: new Date(m.created_at).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          type: "text" as const,
+        };
+      });
       setMessages(mapped)
     }
 

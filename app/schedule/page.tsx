@@ -28,6 +28,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import Link from "next/link"
 import { DoctorProfile, fetchDoctorById } from "@/lib/doctors"
 import { createSchedule } from "@/lib/schedules"
+import { useW3s } from "@/providers/W3sProvider"
 
 function DoctorProfileSkeleton() {
   return (
@@ -197,14 +198,14 @@ export default function SchedulePage() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const { toast } = useToast()
-  const doctorId = searchParams.get("doctorId")
+  const doctorId = searchParams?.get("doctorId")
   const [doctor, setDoctor] = useState<DoctorProfile | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [selectedDate, setSelectedDate] = useState<string>('');
   const [selectedTime, setSelectedTime] = useState<string>('');
   const [symptoms, setSymptoms] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [user, setUser] = useState<{ id: string } | null>(null);
+  const [user, setUser] = useState<{ id: string; email?: string } | null>(null);
 
   // State for consultation type
   const [selectedType, setSelectedType] = useState<{
@@ -214,6 +215,9 @@ export default function SchedulePage() {
     duration: number;
     icon: React.ComponentType<{ className?: string }>;
   } | null>(null)
+
+  // Circle Web SDK for authorizing user-controlled challenges
+  const web3Services = useW3s();
 
   useEffect(() => {
     const loadDoctor = async () => {
@@ -240,7 +244,7 @@ export default function SchedulePage() {
     const getUser = async () => {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (authUser) {
-        setUser({ id: authUser.id });
+        setUser({ id: authUser.id, email: authUser.email || undefined });
       }
     };
     getUser();
@@ -494,8 +498,65 @@ export default function SchedulePage() {
         throw new Error('Error checking availability. Please try again.');
       }
 
-      // Create the schedule
-      const { data, error } = await createSchedule({
+      // Perform payment (patient -> doctor) using Circle user-controlled transfer
+      const doctorWallet: string | undefined = doctor.wallet_address || undefined;
+      if (!doctorWallet) {
+        throw new Error('Doctor payment address is not configured.');
+      }
+      if (!user?.email) {
+        throw new Error('Your account does not have an email set. Please re-login.');
+      }
+
+      // Initiate transfer via our API to get challengeId
+      const transferRes = await fetch('/api/payments/ucw-transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: String(totalAmount),
+          destinationAddress: doctorWallet,
+          email: user.email,
+          feeLevel: 'MEDIUM',
+        }),
+      });
+      const transferData = await transferRes.json();
+      if (!transferRes.ok) {
+        throw new Error(transferData?.error || 'Failed to initiate payment');
+      }
+
+      const { challengeId, userToken: circleUserToken, encryptionKey } = transferData as { challengeId: string; userToken: string; encryptionKey?: string };
+      if (!challengeId || !circleUserToken) {
+        throw new Error('Invalid payment session.');
+      }
+
+      // Authorize the challenge with Circle Web SDK (PIN/biometric)
+      toast({ title: 'Authorize Payment', description: 'Confirm the payment in the next prompt.' });
+      web3Services.setAuthentication({ userToken: circleUserToken, encryptionKey });
+      await new Promise<void>((resolve, reject) => {
+        web3Services.execute(
+          challengeId,
+          (error) => {
+            if (error) {
+              // Handle known benign hiccup: 155706 or generic network error while UI still succeeds
+              const code = (error as any)?.code;
+              const msg = (typeof error === 'object' && error && 'message' in (error as any))
+                ? (error as any).message as string
+                : String(error);
+              // If it's the known transient 155706, keep waiting for the user to complete the UI
+              if (code === 155706) {
+                // do not resolve or reject; the SDK will invoke callback again when user finishes
+                return;
+              }
+              // Any other error is fatal here to avoid proceeding before auth completes
+              reject(new Error(msg || 'Payment authorization failed'));
+              return;
+            }
+            resolve();
+          }
+        );
+      });
+
+      // If we reach here, payment was authorized. Proceed to create the schedule
+      const { data: scheduleData, error: scheduleError } = await createSchedule({
         doctor_id: doctor?.id || '',
         patient_id: patientProfile.id,
         scheduled_date: scheduledDate,
@@ -505,20 +566,20 @@ export default function SchedulePage() {
         notes: symptoms || null,
       });
 
-      if (error) {
-        console.error('Error creating schedule:', error);
+      if (scheduleError) {
+        console.error('Error creating schedule:', scheduleError);
         
         // Handle specific error cases
-        if (error.code === '23505') { // Unique violation
+        if ((scheduleError as any).code === '23505') { // Unique violation
           throw new Error('This time slot is no longer available. Please select a different time.');
-        } else if (error.code === '42501') { // Insufficient privileges
+        } else if ((scheduleError as any).code === '42501') { // Insufficient privileges
           throw new Error('You do not have permission to book this appointment.');
         } else {
-          throw error;
+          throw scheduleError;
         }
       }
 
-      console.log('Appointment created successfully:', data);
+      console.log('Appointment created successfully:', scheduleData);
 
       toast({
         title: 'Success!',

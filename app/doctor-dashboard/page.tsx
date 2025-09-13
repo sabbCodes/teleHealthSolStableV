@@ -29,6 +29,8 @@ import { formatName, formatDate } from "@/lib/utils";
 import Image from "next/image";
 import Link from "next/link";
 import { useToast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
+import { useW3s } from "@/providers/W3sProvider";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -67,6 +69,10 @@ export default function DoctorDashboard() {
   const { doctorProfile, loading, error } = useDoctorProfile();
   const [walletBalance, setWalletBalance] = useState<string>("0.00");
   const [isLoadingBalance, setIsLoadingBalance] = useState<boolean>(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [withdrawing, setWithdrawing] = useState(false);
+  const [withdrawAmount, setWithdrawAmount] = useState<string>("");
+  const [withdrawAddress, setWithdrawAddress] = useState<string>("");
 
   const [upcomingAppointments, setUpcomingAppointments] = useState<Appointment[]>([]);
   const [isLoadingAppointments, setIsLoadingAppointments] = useState<boolean>(true);
@@ -91,6 +97,7 @@ export default function DoctorDashboard() {
   const [selectedPatient, setSelectedPatient] = useState<PatientDetails | null>(null);
   const { toast } = useToast();
   const router = useRouter();
+  const web3Services = useW3s();
 
   useEffect(() => {
     const fetchWalletBalance = async () => {
@@ -503,6 +510,20 @@ export default function DoctorDashboard() {
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
+                  className="w-full cursor-pointer"
+                  onClick={() => {
+                    setWithdrawAmount("");
+                    setWithdrawAddress("");
+                    setWithdrawOpen(true);
+                  }}
+                >
+                  <div className="flex items-center">
+                    <DollarSign className="mr-2 h-4 w-4" />
+                    <span>Withdraw USDC</span>
+                  </div>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
                   className="w-full cursor-pointer text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400"
                   onClick={async () => {
                     try {
@@ -521,6 +542,111 @@ export default function DoctorDashboard() {
           </div>
         </div>
       </header>
+
+      {/* Withdraw USDC Dialog */}
+      <Dialog open={withdrawOpen} onOpenChange={setWithdrawOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Withdraw USDC</DialogTitle>
+            <DialogDescription>
+              Send USDC from your Circle wallet to another Solana address.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Amount (USDC)</label>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                value={withdrawAmount}
+                onChange={(e) => setWithdrawAmount(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground mt-1">Available: {walletBalance} USDC</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Destination Address</label>
+              <Input
+                type="text"
+                placeholder="Recipient Solana address"
+                value={withdrawAddress}
+                onChange={(e) => setWithdrawAddress(e.target.value)}
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setWithdrawOpen(false)} disabled={withdrawing}>
+                Cancel
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (!doctorProfile?.email) {
+                    toast({ title: 'Missing email', description: 'Your account email is required to withdraw.', variant: 'destructive' });
+                    return;
+                  }
+                  const amt = parseFloat(withdrawAmount);
+                  if (!amt || amt <= 0) {
+                    toast({ title: 'Invalid amount', description: 'Enter a valid USDC amount.' , variant: 'destructive'});
+                    return;
+                  }
+                  if (!withdrawAddress || withdrawAddress.length < 32) {
+                    toast({ title: 'Invalid address', description: 'Enter a valid Solana address.', variant: 'destructive' });
+                    return;
+                  }
+                  setWithdrawing(true);
+                  try {
+                    // Initiate transfer from doctor (user-controlled)
+                    const res = await fetch('/api/payments/ucw-transfer', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        amount: String(amt),
+                        destinationAddress: withdrawAddress,
+                        email: doctorProfile.email,
+                        feeLevel: 'MEDIUM',
+                      }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                      throw new Error(data?.error || 'Failed to initiate withdrawal');
+                    }
+                    const { challengeId, userToken, encryptionKey } = data as { challengeId: string; userToken: string; encryptionKey?: string };
+                    if (!challengeId || !userToken) {
+                      throw new Error('Invalid withdrawal session');
+                    }
+                    toast({ title: 'Authorize Withdrawal', description: 'Confirm in the next prompt.' });
+                    web3Services.setAuthentication({ userToken, encryptionKey });
+                    await new Promise<void>((resolve, reject) => {
+                      web3Services.execute(challengeId, (error) => {
+                        if (error) {
+                          const code = (error as any)?.code;
+                          const msg = (typeof error === 'object' && error && 'message' in (error as any)) ? (error as any).message as string : String(error);
+                          if (code === 155706) {
+                            return; // wait for final callback
+                          }
+                          reject(new Error(msg || 'Authorization failed'));
+                          return;
+                        }
+                        resolve();
+                      });
+                    });
+                    toast({ title: 'Withdrawal initiated', description: 'Funds are on the way.' });
+                    setWithdrawOpen(false);
+                  } catch (err) {
+                    console.error('Withdraw error:', err);
+                    toast({ title: 'Withdrawal failed', description: err instanceof Error ? err.message : 'Please try again.', variant: 'destructive' });
+                  } finally {
+                    setWithdrawing(false);
+                  }
+                }}
+                disabled={withdrawing}
+              >
+                {withdrawing ? 'Processing...' : 'Withdraw'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className="container mx-auto px-4 py-6">
         {/* Quick Actions */}

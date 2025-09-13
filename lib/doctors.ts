@@ -18,6 +18,7 @@ export interface DoctorProfile {
   certifications?: string[] | null;
   bio?: string | null;
   name?: string | null;
+  wallet_address?: string | null;
 }
 
 export async function fetchDoctorById(id: string): Promise<DoctorProfile | null> {
@@ -38,7 +39,8 @@ export async function fetchDoctorById(id: string): Promise<DoctorProfile | null>
         bio,
         certifications,
         education,
-        is_verified
+        is_verified,
+        wallet_address
       `)
       .eq('id', id)
       .single();

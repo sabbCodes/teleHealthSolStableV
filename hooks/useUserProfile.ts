@@ -1,11 +1,11 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
-import { Database } from '@/types/supabase';
-import { Session } from '@supabase/supabase-js';
+import { useState, useEffect, useRef } from "react";
+import { supabase } from "@/lib/supabase";
+import { Database } from "@/types/supabase";
+import { Session } from "@supabase/supabase-js";
 
-type UserProfile = Database['public']['Tables']['user_profiles']['Row'] & {
+type UserProfile = Database["public"]["Tables"]["user_profiles"]["Row"] & {
   profile_image?: string;
   first_name?: string;
   last_name?: string;
@@ -26,318 +26,222 @@ export function useUserProfile(): UseUserProfileReturn {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const fetchInProgress = useRef<boolean>(false);
+  const authListener = useRef<{ unsubscribe: () => void } | null>(null);
 
   const fetchUserProfile = async (session: Session | null = null) => {
-    console.log('fetchUserProfile called with session:', session ? 'session exists' : 'no session');
-    
-    if (!session) {
-      console.log('No session provided, trying to get current session...');
-      try {
-        const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError) {
-          console.error('Error getting session:', sessionError);
-          throw sessionError;
-        }
-        
-        if (!currentSession) {
-          console.warn('No active session found');
-          setUserProfile(null);
-          setIsAuthenticated(false);
-          setError('No active session. Please sign in.');
-          setLoading(false);
-          return;
-        }
-        
-        session = currentSession;
-        console.log('Retrieved current session successfully');
-      } catch (error) {
-        console.error('Error in session retrieval:', error);
-        setError('Failed to retrieve session');
-        setLoading(false);
-        return;
-      }
+    // Prevent multiple simultaneous fetches
+    if (fetchInProgress.current) {
+      console.log('Fetch already in progress, skipping...');
+      return;
     }
 
+    console.log(
+      "fetchUserProfile called with session:",
+      session ? "session exists" : "no session"
+    );
+
+    fetchInProgress.current = true;
+
     try {
-      console.log('Starting to fetch user profile...');
       setLoading(true);
       setError(null);
-      
-      // Small delay to prevent UI flickering
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
-      // Double check session is still valid
+
+      // If no session provided, try to get the current session
       if (!session) {
-        console.warn('Session lost during fetch, trying to recover...');
-        const { data: { session: currentSession }, error: sessionCheckError } = await supabase.auth.getSession();
-        
-        if (sessionCheckError || !currentSession) {
-          console.error('Session recovery failed:', sessionCheckError || 'No session found');
+        console.log("No session provided, trying to get current session...");
+        const {
+          data: { session: currentSession },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+
+        if (sessionError) {
+          console.error("Error getting session:", sessionError);
+          setError("Failed to retrieve session");
+          setLoading(false);
+          return null;
+        }
+
+        if (!currentSession) {
+          console.warn("No active session found");
           setUserProfile(null);
           setIsAuthenticated(false);
-          setError('Session expired. Please sign in again.');
+          setError("No active session. Please sign in.");
           setLoading(false);
-          return;
+          return null;
         }
-        
+
         session = currentSession;
-        console.log('Session recovered successfully');
       }
+
+      console.log("Starting to fetch user profile...");
+      setLoading(true);
+      setError(null);
 
       // Get the current user
-      console.log('Fetching user from auth...');
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      console.log('User fetch result:', { user, userError });
+      console.log("Fetching user from auth...");
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+      console.log("User fetch result:", { user, userError });
 
       if (userError || !user) {
-        const errorMsg = userError?.message || 'No user object returned';
-        console.warn('No user found in session:', errorMsg);
+        const errorMsg = userError?.message || "No user object returned";
+        console.warn("No user found in session:", errorMsg);
         setUserProfile(null);
         setIsAuthenticated(false);
-        setError('User not found in session.');
+        setError("User not found in session.");
         setLoading(false);
-        return;
+        return null;
       }
 
-      // First, get the base user profile
-      console.log('Fetching base user profile for user ID:', user.id);
-      
-      let userProfile;
-      let profileError;
-      
-      try {
-        const result = await supabase
-          .from('user_profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-          
-        userProfile = result.data;
-        profileError = result.error;
-        
-        console.log('Base profile query result:', { userProfile, profileError });
+      // Get the base user profile
+      console.log("Fetching base user profile for user ID:", user.id);
 
-        if (profileError) {
-          console.error('Error fetching user profile:', profileError);
-          throw new Error(`Failed to load user profile: ${profileError.message}`);
-        }
-        
-        if (!userProfile) {
-          throw new Error('No profile data returned from database');
-        }
-      
-        // Debug: Check the structure of the user profile
-        console.log('User profile structure:', {
-          id: userProfile.id,
-          email: userProfile.email,
-          user_type: userProfile.user_type,
-          created_at: userProfile.created_at,
-          rawData: userProfile
-        });
-      } catch (error) {
-        console.error('Error in profile fetch:', error);
-        setError('Failed to load user profile');
-        setLoading(false);
-        return;
-      }
-      
-      console.log('Found base user profile:', {
-        id: userProfile.id,
-        email: userProfile.email,
-        user_type: userProfile.user_type,
-        created_at: userProfile.created_at
-      });
+      const { data: userProfile, error: profileError } = await supabase
+        .from("user_profiles")
+        .select("*")
+        .eq("id", user.id)
+        .single();
 
-      // Determine which profile table to query based on user type
-      const profileTable = `${userProfile.user_type}_profiles` as const;
-      console.log(`Looking for detailed profile in table: ${profileTable} for user_profile_id:`, userProfile.id);
-      
-      // Debug: Check if the table exists and its structure
-      try {
-        const { data: tableInfo, error: tableError } = await supabase
-          .rpc('get_table_columns', { table_name: profileTable });
-          
-        if (tableError) {
-          console.warn(`Error checking table ${profileTable} structure:`, tableError);
-        } else {
-          console.log(`Table ${profileTable} structure:`, tableInfo);
-        }
-      } catch (e) {
-        console.warn(`Failed to check table ${profileTable} structure:`, e);
-      }
-      
-      // Get the detailed profile information
-      let detailedProfile = null;
-      try {
-        // First, try to get the detailed profile using the user_profile_id
-        console.log(`Querying ${profileTable} for user_profile_id:`, userProfile.id);
-        const { data, error } = await supabase
-          .from(profileTable)
-          .select('*')
-          .eq('user_profile_id', userProfile.id)
-          .maybeSingle();
-          
-        console.log('Detailed profile query result:', { data, error });
+      console.log("Base profile query result:", { userProfile, profileError });
 
-        if (error) {
-          console.warn(`Error fetching ${userProfile.user_type} profile:`, error);
-          
-          // Check if the error is due to table not found or permission issues
-          if (error.message.includes('permission denied') || error.message.includes('does not exist')) {
-            console.error(`Possible issue with table ${profileTable} or permissions`);
-          }
-        } else if (data) {
-          detailedProfile = data;
-          console.log('Detailed profile found:', detailedProfile);
-        } else {
-          console.warn(`No ${userProfile.user_type} profile found for user_profile_id ${userProfile.id}`);
-          
-          // Check if there are any records in the profile table at all
-          const { count, error: countError } = await supabase
-            .from(profileTable)
-            .select('*', { count: 'exact', head: true });
-            
-          if (countError) {
-            console.warn(`Error counting records in ${profileTable}:`, countError);
-          } else {
-            console.log(`Total records in ${profileTable}:`, count);
-            
-            // If there are records, log the first few to check their structure
-            if (count && count > 0) {
-              const { data: sampleData } = await supabase
-                .from(profileTable)
-                .select('*')
-                .limit(5);
-              console.log(`Sample records from ${profileTable}:`, sampleData);
-            }
-          }
-        }
-        
-        // If we still don't have a profile, check if the user has completed onboarding
-        if (!detailedProfile) {
-          console.log('No detailed profile found, checking if user needs to complete onboarding');
-          // You might want to redirect to onboarding or show a message to the user
-          setError('Please complete your profile setup to continue');
-        }
-      } catch (err) {
-        console.error('Unexpected error fetching detailed profile:', err);
+      if (profileError || !userProfile) {
+        console.error("Error fetching user profile:", profileError);
+        throw new Error(profileError?.message || "Failed to load user profile");
       }
 
-      // Combine the user profile with detailed profile data
-      const profileData: UserProfile = {
-        ...userProfile,
-        ...(detailedProfile || {}),
-        email: user.email || '',
-      };
-
-      // Add full_name field if first_name or last_name exists
-      if (detailedProfile && (detailedProfile.first_name || detailedProfile.last_name)) {
-        profileData.full_name = [
-          detailedProfile.first_name,
-          detailedProfile.last_name
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .trim();
-      }
-
-      setUserProfile(profileData);
+      // If we got this far, we have a valid session and user profile
       setIsAuthenticated(true);
+
+      // Get the detailed profile based on user type
+      if (userProfile.user_type) {
+        const profileTable = `${userProfile.user_type}_profiles`;
+        console.log(`Looking for detailed profile in table: ${profileTable}`);
+
+        const { data: detailedProfile, error: detailedError } = await supabase
+          .from(profileTable)
+          .select("*")
+          .eq("user_profile_id", userProfile.id)
+          .maybeSingle();
+
+        if (detailedError) {
+          console.warn(
+            `Error fetching ${userProfile.user_type} profile:`,
+            detailedError
+          );
+        }
+
+        // Merge the detailed profile with the base profile
+        const mergedProfile = {
+          ...userProfile,
+          ...(detailedProfile || {}),
+          user_type: userProfile.user_type,
+          email: user.email,
+        };
+
+        setUserProfile(mergedProfile);
+      } else {
+        // If no user_type is set, just use the base profile
+        setUserProfile({
+          ...userProfile,
+          email: user.email,
+        });
+      }
+
+      return userProfile;
+    } catch (error) {
+      console.error("Error in fetchUserProfile:", error);
+      setError(
+        error instanceof Error ? error.message : "Failed to load user profile"
+      );
+      setUserProfile(null);
+      setIsAuthenticated(false);
+      return null;
+    } finally {
       setLoading(false);
-    } catch (err) {
-      console.error('Error in fetchUserProfile:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load profile');
-      setLoading(false);
+      fetchInProgress.current = false;
     }
   };
 
+  // Handle initial session check and auth state changes
   useEffect(() => {
-    let isMounted = true;
-    
-    console.log('Setting up auth state change listener...');
-    // Set up auth state change listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', { event, hasSession: !!session });
-      console.log('Auth state changed:', event);
-      if (!isMounted) return;
-      
-      if (event === 'SIGNED_IN' && session) {
-        try {
-          await fetchUserProfile(session);
-        } catch (error) {
-          console.error('Error in auth state change handler:', error);
-          if (isMounted) {
-            setError('Failed to load user profile');
-            setLoading(false);
-          }
-        }
-      } else if (event === 'SIGNED_OUT') {
-        if (isMounted) {
-          setUserProfile(null);
-          setIsAuthenticated(false);
-          setError('Please sign in to continue');
-          setLoading(false);
-        }
-      }
-    });
+    let mounted = true;
+    let debounceTimer: NodeJS.Timeout;
 
-    // Initial fetch
-    const fetchInitialSession = async () => {
-      console.log('Starting initial session fetch...');
-      try {
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        if (sessionError) {
-          console.error('Error getting session:', sessionError);
-          throw sessionError;
-        }
-        
-        console.log('Initial session fetch result:', { hasSession: !!session });
-        
-        if (session) {
-          console.log('Session found, fetching user profile...');
-          await fetchUserProfile(session);
-        } else if (isMounted) {
-          console.log('No active session found');
-          setLoading(false);
-          setError('No active session found');
-        }
-      } catch (error) {
-        console.error('Error in initial session fetch:', error);
-        if (isMounted) {
-          setError('Failed to initialize session');
-          setLoading(false);
-        }
+    const initialize = async () => {
+      // Check for existing session
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (session) {
+        console.log("Initial session found, fetching profile...");
+        await fetchUserProfile(session);
+      } else {
+        console.log("No initial session found");
+        setLoading(false);
+        setIsAuthenticated(false);
       }
     };
 
-    fetchInitialSession();
+    // Debounced version of fetchUserProfile
+    const debouncedFetchProfile = (session: Session) => {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        if (mounted) {
+          fetchUserProfile(session);
+        }
+      }, 100); // 100ms debounce
+    };
 
-    // Cleanup
+    // Set up auth state change listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log("Auth state changed:", event);
+
+        if (!mounted) return;
+
+        if (event === "SIGNED_OUT") {
+          setUserProfile(null);
+          setIsAuthenticated(false);
+          setLoading(false);
+          return;
+        }
+
+        if ((event === "SIGNED_IN" || event === "INITIAL_SESSION") && session) {
+          debouncedFetchProfile(session);
+        }
+      }
+    );
+
+    // Store the subscription for cleanup
+    authListener.current = subscription;
+
+    // Initialize the hook
+    initialize();
+
+    // Cleanup function
     return () => {
-      isMounted = false;
-      subscription?.unsubscribe();
+      mounted = false;
+      clearTimeout(debounceTimer);
+      if (authListener.current) {
+        authListener.current.unsubscribe();
+      }
     };
   }, []);
 
-  return { 
-    userProfile, 
-    loading, 
-    error,
-    isAuthenticated
-  };
+  return { userProfile, loading, error, isAuthenticated };
 }
 
 // Helper function to get initials from a name
 export function getInitials(name?: string): string {
-  if (!name) return 'U';
-  
+  if (!name) return "U";
+
   return name
-    .split(' ')
-    .map(part => part[0])
+    .split(" ")
+    .map((part) => part[0])
     .filter(Boolean)
-    .join('')
+    .join("")
     .toUpperCase()
     .substring(0, 2);
 }

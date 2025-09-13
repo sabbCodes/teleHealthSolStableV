@@ -50,10 +50,13 @@ export default function DoctorChatPage() {
   const [authUserId, setAuthUserId] = useState<string | null>(null)
   const [doctorUserId, setDoctorUserId] = useState<string | null>(null)
   const [patientUserId, setPatientUserId] = useState<string | null>(null)
-  const [patientProfile, setPatientProfile] = useState<
-    | null
-    | { first_name: string | null; last_name: string | null; profile_image: string | null }
-  >(null)
+  const [patientProfile, setPatientProfile] = useState<{
+    first_name: string | null;
+    last_name: string | null;
+    profile_image: string | null;
+    date_of_birth?: string | null;
+  } | null>(null)
+  const [scheduleNote, setScheduleNote] = useState<string | null>(null)
   const [messages, setMessages] = useState<
     { id: string; sender: "doctor" | "patient"; content: string; timestamp: string; type: "text" | "file" }[]
   >([])
@@ -91,7 +94,7 @@ export default function DoctorChatPage() {
       "id",
     ] as const
     for (const key of possibleKeys) {
-      const v = searchParams.get(key as string)
+      const v = searchParams?.get(key as string)
       if (v) {
         setAppointmentId(v)
         break
@@ -134,30 +137,79 @@ export default function DoctorChatPage() {
   useEffect(() => {
     if (!schedule) return
     let cancelled = false
-    ;(async () => {
-      const [{ data: d, error: de }, { data: p, error: pe }] = await Promise.all([
-        supabase.from("doctor_profiles").select("user_profile_id").eq("id", schedule.doctor_id).single(),
-        supabase
-          .from("patient_profiles")
-          .select("user_profile_id, first_name, last_name, profile_image")
-          .eq("id", schedule.patient_id)
-          .single(),
-      ])
-      if (de) console.error("Failed to fetch doctor user id:", de)
-      if (pe) console.error("Failed to fetch patient user id/profile:", pe)
-      if (cancelled) return
-      setDoctorUserId(d?.user_profile_id ?? null)
-      setPatientUserId(p?.user_profile_id ?? null)
-      setPatientProfile({
-        first_name: (p as any)?.first_name ?? null,
-        last_name: (p as any)?.last_name ?? null,
-        profile_image: (p as any)?.profile_image ?? null,
-      })
-    })()
+    
+    const fetchData = async () => {
+      try {
+        // Fetch doctor and patient data in parallel
+        const [
+          { data: d, error: de },
+          { data: p, error: pe },
+          { data: scheduleData, error: scheduleError }
+        ] = await Promise.all([
+          supabase.from("doctor_profiles").select("user_profile_id").eq("id", schedule.doctor_id).single(),
+          supabase
+            .from("patient_profiles")
+            .select("user_profile_id, first_name, last_name, profile_image, date_of_birth")
+            .eq("id", schedule.patient_id)
+            .single(),
+          supabase
+            .from("schedules")
+            .select("notes")
+            .eq("id", schedule.id)
+            .single()
+        ])
+
+        if (cancelled) return
+        
+        if (de) console.error("Failed to fetch doctor user id:", de)
+        if (pe) console.error("Failed to fetch patient user id/profile:", pe)
+        if (scheduleError) console.error("Failed to fetch schedule note:", scheduleError)
+
+        setDoctorUserId(d?.user_profile_id ?? null)
+        setPatientUserId(p?.user_profile_id ?? null)
+        setScheduleNote(scheduleData?.notes ?? null)
+        
+        setPatientProfile({
+          first_name: p?.first_name ?? null,
+          last_name: p?.last_name ?? null,
+          profile_image: p?.profile_image ?? null,
+          date_of_birth: p?.date_of_birth ?? null
+        })
+      } catch (error) {
+        console.error("Error fetching data:", error)
+      }
+    }
+
+    fetchData()
+    
     return () => {
       cancelled = true
     }
   }, [schedule])
+
+  // Calculate patient's age from date of birth
+  const calculateAge = (dob: string | null | undefined): string => {
+    if (!dob) return 'N/A'
+    
+    try {
+      const birthDate = new Date(dob)
+      // Check if the date is valid
+      if (isNaN(birthDate.getTime())) return 'N/A'
+      
+      const today = new Date()
+      let age = today.getFullYear() - birthDate.getFullYear()
+      const monthDiff = today.getMonth() - birthDate.getMonth()
+      
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--
+      }
+      
+      return age.toString()
+    } catch (error) {
+      console.error('Error calculating age:', error)
+      return 'N/A'
+    }
+  }
 
   // Load existing messages and subscribe to realtime inserts
   useEffect(() => {
@@ -179,25 +231,56 @@ export default function DoctorChatPage() {
       if (!data) return
       if (cancelled) return
 
-      const mapped = (data as unknown as MessageRow[]).map((m) => ({
-        id: m.id,
-        sender: m.sender_id === doctorUserId ? "doctor" : "patient",
-        content: m.content,
-        timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        type: "text" as const,
-      }))
+      const mapped = (data as unknown as MessageRow[]).map((m) => {
+        const sender: "doctor" | "patient" =
+          m.sender_id === doctorUserId ? "doctor" : "patient";
+        return {
+          id: m.id,
+          sender,
+          content: m.content,
+          timestamp: new Date(m.created_at).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          type: "text" as const,
+        };
+      });
       setMessages(mapped)
     }
 
     loadMessages()
 
+    // Track processed message IDs to prevent duplicates
+    const processedMessageIds = new Set<string>()
+
     const channel = supabase
       .channel(`messages-appointment-${appointmentId}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages", filter: `appointment_id=eq.${appointmentId}` },
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `appointment_id=eq.${appointmentId}`
+        },
         (payload) => {
           const m = payload.new as MessageRow
+          
+          // Skip if we've already processed this message
+          if (processedMessageIds.has(m.id)) {
+            console.log('Skipping duplicate message:', m.id)
+            return
+          }
+          
+          // Add to processed messages
+          processedMessageIds.add(m.id)
+          
+          // Only keep the last 100 message IDs to prevent memory leaks
+          if (processedMessageIds.size > 100) {
+            const ids = Array.from(processedMessageIds).slice(-100)
+            processedMessageIds.clear()
+            ids.forEach(id => processedMessageIds.add(id))
+          }
           setMessages((prev) => {
             if (prev.some((pm) => pm.id === m.id)) return prev
             return [
@@ -221,43 +304,21 @@ export default function DoctorChatPage() {
     }
   }, [appointmentId, doctorUserId])
 
+  // Patients list - using real data from the database
   const patients = [
     {
       id: 1,
-      name: "John Doe",
-      age: 32,
-      avatar: "/placeholder.svg?height=40&width=40",
-      lastMessage: "Thank you for the consultation, Doctor.",
-      timestamp: "2 min ago",
-      unread: 1,
-      online: true,
-      condition: "Hypertension Follow-up",
-    },
-    {
-      id: 2,
-      name: "Sarah Johnson",
-      age: 28,
-      avatar: "/placeholder.svg?height=40&width=40",
-      lastMessage: "When should I take the medication?",
-      timestamp: "1 hour ago",
-      unread: 0,
-      online: false,
-      condition: "Skin Consultation",
-    },
-    {
-      id: 3,
-      name: "Michael Chen",
-      age: 45,
-      avatar: "/placeholder.svg?height=40&width=40",
-      lastMessage: "The symptoms have improved significantly.",
-      timestamp: "Yesterday",
-      unread: 0,
-      online: true,
-      condition: "General Checkup",
+      name: `${patientProfile?.first_name || 'Patient'} ${patientProfile?.last_name || ''}`.trim() || 'Patient',
+      age: calculateAge(patientProfile?.date_of_birth),
+      avatar: patientProfile?.profile_image || "/placeholder.svg?height=40&width=40",
+      lastMessage: messages.length > 0 ? messages[messages.length - 1].content : "No messages yet",
+      timestamp: messages.length > 0 ? messages[messages.length - 1].timestamp : "",
+      unread: 0, // You can implement unread count logic if needed
+      online: true, // You can implement online status if needed
+      condition: scheduleNote || "No notes available",
     },
   ]
 
-  // messages are now managed from Supabase state above
 
   const sendMessage = async () => {
     if (!message.trim() || !appointmentId || !authUserId || !doctorUserId || !patientUserId) return
@@ -443,13 +504,15 @@ export default function DoctorChatPage() {
                   </div>
 
                   <div>
-                    <h2 className="font-semibold text-gray-900 dark:text-white">{headerPatientName}</h2>
+                    <h2 className="font-semibold text-gray-900 dark:text-white">
+                      {patientProfile?.first_name} {patientProfile?.last_name}
+                    </h2>
                     <div className="flex items-center space-x-2">
                       <Users className="w-4 h-4 text-blue-600" />
                       <span className="text-sm text-gray-600 dark:text-gray-300">
-                        Age: {selectedPatient.age} • {selectedPatient.condition}
+                        Age: {calculateAge(patientProfile?.date_of_birth)}{scheduleNote && ' • ' + scheduleNote}
                       </span>
-                      {selectedPatient.online && <span className="text-sm text-green-600">• Online</span>}
+                      {/* <span className="text-sm text-green-600">• Online</span> */}
                     </div>
                   </div>
                 </div>

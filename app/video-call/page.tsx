@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import {
@@ -15,12 +15,26 @@ import {
   Clock,
   FileText,
   Monitor,
+  User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useWebRTC } from "@/hooks/useWebRTC";
 import { useToast } from "@/hooks/use-toast";
+import { useUserProfile } from "@/hooks/useUserProfile";
+import { supabase } from "@/lib/supabase";
+import { VideoParticipant } from "@/components/video/VideoParticipant";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+
+type UserProfile = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  profile_image?: string;
+  email?: string;
+  role?: string;
+};
 
 export default function VideoCallPage() {
   const searchParams = useSearchParams();
@@ -32,11 +46,13 @@ export default function VideoCallPage() {
   const [isCallActiveOverlay, setIsCallActiveOverlay] = useState(true);
   const [callDuration, setCallDuration] = useState(0);
   const [showChat, setShowChat] = useState(false);
+  const [remoteUser, setRemoteUser] = useState<UserProfile | null>(null);
+  const [localUser, setLocalUser] = useState<UserProfile | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const localVideoRefLg = useRef<HTMLVideoElement | null>(null);
-  const localVideoRefSm = useRef<HTMLVideoElement | null>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const { userProfile: currentUser } = useUserProfile();
   const { toast } = useToast();
+  const fetchInProgress = useRef(false);
 
   const {
     localStream,
@@ -48,7 +64,7 @@ export default function VideoCallPage() {
     toggleVideo,
     endCall: endCallHook,
     error,
-  } = useWebRTC(roleParam, appointmentId);
+  } = useWebRTC(roleParam as 'doctor' | 'patient', appointmentId);
 
   useEffect(() => {
     if (isCallActive) {
@@ -76,33 +92,138 @@ export default function VideoCallPage() {
     }, 1000)
   }
 
-  // Attach streams to video elements
-  useEffect(() => {
-    if (localStream) {
-      try {
-        if (localVideoRefLg.current) {
-          localVideoRefLg.current.srcObject = localStream;
-          localVideoRefLg.current.muted = true;
-          void localVideoRefLg.current.play().catch(() => {});
-        }
-        if (localVideoRefSm.current) {
-          localVideoRefSm.current.srcObject = localStream;
-          localVideoRefSm.current.muted = true;
-          void localVideoRefSm.current.play().catch(() => {});
-        }
-      } catch {}
-    }
-  }, [localStream]);
+  // Fetch user details from the appropriate profile table
+  const fetchUserDetails = useCallback(async (userId: string, userRole: 'doctor' | 'patient') => {
+    if (!userId || fetchInProgress.current) return null;
+    
+    fetchInProgress.current = true;
+    try {
+      const tableName = userRole === 'doctor' ? 'doctor_profiles' : 'patient_profiles';
+      const { data, error } = await supabase
+        .from(tableName)
+        .select('*')
+        .eq('user_id', userId)
+        .single();
 
-  useEffect(() => {
-    if (remoteVideoRef.current && remoteStream) {
-      try {
-        remoteVideoRef.current.srcObject = remoteStream;
-        remoteVideoRef.current.muted = false;
-        void remoteVideoRef.current.play().catch(() => {});
-      } catch {}
+      if (error) throw error;
+      
+      // Map the data to our UserProfile type
+      return {
+        id: userId,
+        first_name: data.first_name || '',
+        last_name: data.last_name || '',
+        profile_image: data.profile_image || '',
+        email: data.email || '',
+        role: userRole === 'doctor' ? 'Doctor' : 'Patient'
+      } as UserProfile;
+    } catch (error) {
+      console.error(`Error fetching ${userRole} details:`, error);
+      return null;
+    } finally {
+      fetchInProgress.current = false;
     }
-  }, [remoteStream]);
+  }, []);
+
+  // Fetch the remote participant's ID based on appointment ID
+  const fetchRemoteParticipant = useCallback(async (apptId: string, currentUserRole: string) => {
+    if (!apptId) return null;
+    
+    try {
+      // First, get the appointment details
+      const { data: appointment, error: apptError } = await supabase
+        .from('appointments')
+        .select('doctor_id, patient_id')
+        .eq('id', apptId)
+        .single();
+
+      if (apptError) throw apptError;
+      if (!appointment) return null;
+
+      // Determine the remote user ID based on current user's role
+      const remoteUserId = currentUserRole === 'doctor' 
+        ? appointment.patient_id 
+        : appointment.doctor_id;
+
+      return remoteUserId;
+    } catch (error) {
+      console.error('Error fetching remote participant:', error);
+      return null;
+    }
+  }, []);
+
+  // Set up user data when the component mounts
+  useEffect(() => {
+    const setupUsers = async () => {
+      if (!appointmentId) {
+        console.error('No appointment ID provided');
+        toast({
+          title: 'Error',
+          description: 'No appointment ID provided',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setLoading(true);
+      try {
+        // Set local user from current user profile
+        if (currentUser) {
+          const localUserRole = roleParam as 'doctor' | 'patient';
+          const localProfile = await fetchUserDetails(currentUser.id, localUserRole);
+          
+          if (localProfile) {
+            setLocalUser({
+              ...localProfile,
+              first_name: localProfile.first_name || 'You',
+              role: roleParam.charAt(0).toUpperCase() + roleParam.slice(1)
+            });
+          } else {
+            setLocalUser({
+              id: currentUser.id,
+              first_name: currentUser.first_name || 'You',
+              last_name: currentUser.last_name || '',
+              profile_image: currentUser.profile_image,
+              email: currentUser.email || '',
+              role: roleParam.charAt(0).toUpperCase() + roleParam.slice(1)
+            });
+          }
+
+          // Get the remote participant's ID based on the appointment
+          const remoteUserId = await fetchRemoteParticipant(appointmentId, roleParam);
+          if (remoteUserId) {
+            const remoteUserRole = roleParam === 'doctor' ? 'patient' : 'doctor';
+            const remoteUserData = await fetchUserDetails(remoteUserId, remoteUserRole);
+            
+            if (remoteUserData) {
+              setRemoteUser(remoteUserData);
+            } else {
+              console.warn('Could not fetch remote user details, using fallback');
+              setRemoteUser({
+                id: remoteUserId,
+                first_name: roleParam === 'doctor' ? 'Patient' : 'Doctor',
+                last_name: '',
+                role: roleParam === 'doctor' ? 'Patient' : 'Doctor'
+              });
+            }
+          } else {
+            console.warn('Could not determine remote participant, using fallback');
+            setRemoteUser({
+              id: 'unknown',
+              first_name: roleParam === 'doctor' ? 'Patient' : 'Doctor',
+              last_name: '',
+              role: roleParam === 'doctor' ? 'Patient' : 'Doctor'
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error setting up users:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    setupUsers();
+  }, [currentUser, fetchUserDetails, roleParam]);
 
   // Surface errors as toasts instead of in-page banner
   useEffect(() => {
@@ -129,6 +250,17 @@ export default function VideoCallPage() {
       ? 'bg-red-500'
       : 'bg-gray-400';
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="mt-4 text-gray-300">Setting up your call...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-900 relative overflow-hidden">
       {/* Background Video Areas */}
@@ -139,21 +271,14 @@ export default function VideoCallPage() {
           animate={{ opacity: 1, scale: 1 }}
           className="relative bg-gray-800 rounded-xl overflow-hidden h-[85vh] lg:h-[80vh]"
         >
-          <video
-            ref={remoteVideoRef}
-            className="absolute inset-0 w-full h-full object-cover bg-black z-0"
-            autoPlay
-            playsInline
+          <VideoParticipant
+            stream={remoteStream}
+            name={`${remoteUser?.first_name || ''} ${remoteUser?.last_name || ''}`.trim() || (roleParam === 'doctor' ? 'Patient' : 'Doctor')}
+            role={remoteUser?.role || (roleParam === 'doctor' ? 'Patient' : 'Doctor')}
+            profileImage={remoteUser?.profile_image}
+            connectionStatus={connectionStatus}
+            className="h-full w-full"
           />
-
-          {/* Participant Info Overlay */}
-          <div className="absolute top-4 left-4 z-10 pointer-events-none">
-            <div className="bg-black/50 backdrop-blur-sm rounded-lg p-3">
-              <h3 className="text-white font-semibold">{roleParam === 'doctor' ? 'Patient' : 'Doctor'}</h3>
-              <p className="text-gray-300 text-sm">{roleParam === 'doctor' ? 'Participant' : 'Consultant'}</p>
-              <Badge className="mt-1 bg-green-600">{connectionStatus}</Badge>
-            </div>
-          </div>
 
           {/* Call Duration */}
           <div className="absolute top-4 right-4 z-10 pointer-events-none">
@@ -171,30 +296,29 @@ export default function VideoCallPage() {
           transition={{ delay: 0.1 }}
           className="relative bg-gray-800 rounded-xl overflow-hidden lg:block hidden h-[40vh] lg:h-[80vh]"
         >
-          <video
-            ref={localVideoRefLg}
-            className="absolute inset-0 w-full h-full object-cover bg-black z-0"
-            autoPlay
-            playsInline
-            muted
+          <VideoParticipant
+            stream={localStream}
+            name={localUser?.first_name || 'You'}
+            role={localUser?.role || roleParam}
+            isLocal
+            profileImage={localUser?.profile_image}
+            connectionStatus={connectionStatus}
+            className="h-full w-full"
           />
-
-          <div className="absolute top-4 left-4 z-10 pointer-events-none">
-            <div className="bg-black/50 backdrop-blur-sm rounded-lg p-2">
-              <span className="text-white text-sm">You ({roleParam})</span>
-            </div>
-          </div>
         </motion.div>
       </div>
 
       {/* Mobile Self Video (Picture-in-Picture) */}
-      <div className="lg:hidden absolute top-4 right-4 w-32 h-24 bg-gray-800 rounded-lg overflow-hidden z-10">
-        <video
-          ref={localVideoRefSm}
-          className="w-full h-full object-cover bg-black"
-          autoPlay
-          playsInline
-          muted
+      <div className="lg:hidden absolute top-4 right-4 w-32 h-24 bg-gray-800 rounded-lg overflow-hidden z-10 border-2 border-white/20">
+        <VideoParticipant
+          stream={localStream}
+          name=""
+          role=""
+          isLocal
+          showInfo={false}
+          profileImage={localUser?.profile_image}
+          connectionStatus={connectionStatus}
+          className="h-full w-full"
         />
       </div>
 

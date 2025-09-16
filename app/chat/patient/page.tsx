@@ -21,23 +21,16 @@ import {
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
-import { Dialog, DialogContent } from "@/components/ui/dialog"
-import { SessionCompletionFlow } from "@/components/session/SessionCompletionFlow"
-import { toast } from "sonner"
+import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import { formatName } from "@/lib/utils"
 
 export default function PatientChatPage() {
   // Track the currently selected doctor's ID (string type to match database IDs)
   const [selectedChat, setSelectedChat] = useState<string | null>(null)
-  const [showHealthRecord, setShowHealthRecord] = useState(false)
-  const [scheduleNote, setScheduleNote] = useState<string | null>(null)
-  const [sessionStatus, setSessionStatus] = useState<string>('active')
-  const [endRequestedBy, setEndRequestedBy] = useState<string | null>(null)
   const [message, setMessage] = useState("")
   const [isRecording, setIsRecording] = useState(false)
   const [showSidebar, setShowSidebar] = useState(false)
@@ -290,197 +283,34 @@ export default function PatientChatPage() {
             lastMessage: messages.length > 0 ? messages[messages.length - 1].content : "No messages yet",
             timestamp: messages.length > 0 ? messages[messages.length - 1].timestamp : "",
             unread: 0, // You can implement unread count logic if needed
+            online: true, // You can implement online status if needed
+          }));
+          
+          setDoctors(formattedDoctors);
+          
+          // Set the first doctor as selected if none is selected
+          if (formattedDoctors.length > 0 && !selectedChat) {
+            setSelectedChat(formattedDoctors[0].id);
+          }
         }
+      } catch (error) {
+        console.error("Error fetching data:", error);
       }
-    } catch (error) {
-      console.error("Error fetching data:", error);
-    }
-  };
+    };
 
-  fetchData();
-  
-  return () => {
-    cancelled = true;
-  };
-}, [schedule, messages, selectedChat])
-
-// Set up real-time subscription for messages
-useEffect(() => {
-  if (!appointmentId || !doctorUserId || !patientUserId) return
-
-  // Initial fetch of messages
-  const fetchMessages = async () => {
-    const { data: messages, error } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('appointment_id', appointmentId)
-      .order('created_at', { ascending: true })
-
-    if (error) {
-      console.error('Error fetching messages:', error)
-      return
-    }
-
-    setMessages(messages.map(msg => ({
-      id: msg.id,
-      sender: msg.sender_id === patientUserId ? 'patient' : 'doctor',
-      content: msg.content,
-      timestamp: msg.created_at,
-      type: msg.type || 'text'
-    })))
-  }
-
-  fetchMessages()
-
-  // Set up real-time subscription
-  const channel = supabase
-    .channel('schema-db-changes')
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
-        filter: `appointment_id=eq.${appointmentId}`
-      },
-      (payload) => {
-        const newMessage = payload.new as MessageRow
-        // Only add if not already in messages (to prevent duplicates)
-        setMessages(prev => {
-          if (prev.some(msg => msg.id === newMessage.id)) return prev
-          return [...prev, {
-            id: newMessage.id,
-            sender: newMessage.sender_id === patientUserId ? 'patient' : 'doctor',
-            content: newMessage.content,
-            timestamp: newMessage.created_at,
-            type: 'text' // Default type
-          }]
-        })
-      }
-    )
-    .subscribe()
-
-  return () => {
-    supabase.removeChannel(channel)
-  }
-}, [appointmentId, doctorUserId, patientUserId])
-
-// Load messages and subscribe to realtime
-useEffect(() => {
-  if (!appointmentId || !doctorUserId || !patientUserId) return
-  let cancelled = false
-
-  const loadMessages = async () => {
-    const { data, error } = await supabase
-      .from("messages")
-      .select("id, appointment_id, sender_id, receiver_id, content, created_at")
-      .eq("appointment_id", appointmentId)
-      .order("created_at", { ascending: true })
+    fetchData();
     
-    if (error) {
-      console.error("Failed to load messages:", error)
-      return
-    }
-    
-    if (!data || cancelled) return
-    
-    const mapped = (data as unknown as MessageRow[]).map((m) => {
-      const sender: 'doctor' | 'patient' = m.sender_id === doctorUserId ? 'doctor' : 'patient';
-      return {
-        id: m.id,
-        sender,
-        content: m.content,
-        timestamp: new Date(m.created_at).toLocaleTimeString(undefined, {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-        type: 'text' as const,
-      };
-    });
-    
-    if (!cancelled) {
-      setMessages(mapped)
-    }
-  }
+    return () => {
+      cancelled = true;
+    };
+  }, [schedule, messages, selectedChat]);
 
-  loadMessages()
+  // Load messages and subscribe to realtime
+  useEffect(() => {
+    if (!appointmentId || !doctorUserId || !patientUserId) return
+    let cancelled = false
 
-  // Track processed message IDs to prevent duplicates
-  const processedMessageIds = new Set<string>()
-  let channel: ReturnType<typeof supabase.channel> | null = null
-
-  // Only set up the channel if we have all required IDs
-  if (appointmentId && doctorUserId && patientUserId) {
-    channel = supabase
-      .channel(`messages-appointment-${appointmentId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `appointment_id=eq.${appointmentId}`
-        },
-        (payload) => {
-          const m = payload.new as MessageRow
-          
-          // Skip if we've already processed this message
-          if (processedMessageIds.has(m.id)) {
-            console.log('Skipping duplicate message:', m.id)
-            return
-          }
-          
-          // Add to processed messages
-          processedMessageIds.add(m.id)
-          
-          // Only keep the last 100 message IDs to prevent memory leaks
-          if (processedMessageIds.size > 100) {
-            const ids = Array.from(processedMessageIds).slice(-100)
-            processedMessageIds.clear()
-            ids.forEach(id => processedMessageIds.add(id))
-          }
-          
-          // Only add the message if it's not from the current user
-          // (since we already added it optimistically)
-          if (m.sender_id === authUserId) {
-            console.log('Skipping own message in realtime update:', m.id)
-            return
-          }
-          
-          setMessages((prev) => {
-            // Check if message already exists (by ID or content + timestamp)
-            const messageExists = prev.some(pm => 
-              pm.id === m.id || 
-              (pm.content === m.content && 
-               Math.abs(new Date(pm.timestamp).getTime() - new Date(m.created_at).getTime()) < 1000)
-            )
-            
-            if (messageExists) return prev
-            
-            return [
-              ...prev,
-              {
-                id: m.id,
-                sender: m.sender_id === doctorUserId ? "doctor" : "patient",
-                content: m.content,
-                timestamp: new Date(m.created_at).toLocaleTimeString([], { 
-                  hour: "2-digit", 
-                  minute: "2-digit" 
-                }),
-                type: "text",
-              },
-            ]
-          })
-        }
-      )
-      .subscribe()
-  }
-
-  return () => {
-    cancelled = true
-    if (channel) {
-      supabase.removeChannel(channel)
-    }
+    const loadMessages = async () => {
       const { data, error } = await supabase
         .from("messages")
         .select("id, appointment_id, sender_id, receiver_id, content, created_at")
@@ -756,24 +586,8 @@ useEffect(() => {
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {selectedChat && (
-          <div className="flex flex-col h-full">
-            {/* Session Completion Flow */}
-            {sessionStatus === 'pending_completion' && endRequestedBy && endRequestedBy !== authUserId && (
-              <SessionCompletionFlow 
-                appointmentId={appointmentId || ''}
-                userId={authUserId || ''}
-                onComplete={() => {
-                  setSessionStatus('completed')
-                  // Additional completion logic can go here
-                }}
-                onDispute={(reason) => {
-                  setSessionStatus('disputed')
-                  // Additional dispute handling logic can go here
-                }}
-              />
-            )}
-            
+        {selectedDoctor ? (
+          <>
             {/* Chat Header */}
             <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 p-4">
               <div className="flex items-center justify-between">

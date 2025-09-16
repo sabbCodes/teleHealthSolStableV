@@ -22,7 +22,6 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
@@ -33,9 +32,8 @@ export default function DoctorChatPage() {
   const [selectedChat, setSelectedChat] = useState(1)
   const [message, setMessage] = useState("")
   const [isRecording, setIsRecording] = useState(false)
+  const [showSidebar, setShowSidebar] = useState(false)
   const [showHealthRecord, setShowHealthRecord] = useState(false)
-  const [isMarkingComplete, setIsMarkingComplete] = useState(false)
-  const [sessionStatus, setSessionStatus] = useState<string>('active')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const searchParams = useSearchParams()
 
@@ -548,15 +546,6 @@ export default function DoctorChatPage() {
                   >
                     <FileText className="w-4 h-4 mr-1" />
                     Record
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="bg-green-50 text-green-600 hover:bg-green-100"
-                    onClick={handleMarkSessionComplete}
-                    disabled={isMarkingComplete}
-                  >
-                    {isMarkingComplete ? 'Marking Complete...' : 'Mark Session Complete'}
                   </Button>
                   <Button variant="ghost" size="sm">
                     <MoreVertical className="w-4 h-4" />

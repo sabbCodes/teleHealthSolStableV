@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 
 export interface DoctorProfile {
   id: string;
+  user_profile_id: string;
   first_name: string;
   last_name: string;
   specialization: string;
@@ -27,6 +28,7 @@ export async function fetchDoctorById(id: string): Promise<DoctorProfile | null>
       .from('doctor_profiles')
       .select(`
         id,
+        user_profile_id,
         first_name,
         last_name,
         specialization,
@@ -65,6 +67,7 @@ export async function fetchDoctors({
       .from('doctor_profiles')
       .select(`
         id,
+        user_profile_id,
         first_name,
         last_name,
         specialization,
@@ -73,7 +76,12 @@ export async function fetchDoctors({
         profile_image,
         city,
         country,
-        languages
+        languages,
+        bio,
+        certifications,
+        education,
+        is_verified,
+        wallet_address
       `)
       .eq('is_verified', true)
       .order('first_name', { ascending: true });
@@ -105,6 +113,12 @@ export async function fetchDoctors({
       // Add mock rating and reviews for now - in a real app, this would come from a reviews table
       rating: 4.5 + Math.random() * 0.5, // Random rating between 4.5 and 5.0
       reviews_count: Math.floor(Math.random() * 100) + 10, // Random reviews between 10-110
+      // Ensure all required fields are included
+      bio: doctor.bio || null,
+      certifications: doctor.certifications || null,
+      education: doctor.education || null,
+      is_verified: doctor.is_verified || false,
+      wallet_address: doctor.wallet_address || null,
     }));
   } catch (error) {
     console.error('Unexpected error fetching doctors:', error);

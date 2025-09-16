@@ -8,11 +8,8 @@ import {
   Send,
   Paperclip,
   Smile,
-  Phone,
-  Video,
   MoreVertical,
   Search,
-  Plus,
   Users,
   Stethoscope,
   ImageIcon,
@@ -213,7 +210,7 @@ export default function DoctorChatPage() {
 
   // Load existing messages and subscribe to realtime inserts
   useEffect(() => {
-    if (!appointmentId) return
+    if (!appointmentId || !doctorUserId || !patientUserId) return
     let cancelled = false
 
     const loadMessages = async () => {
@@ -228,81 +225,107 @@ export default function DoctorChatPage() {
         return
       }
 
-      if (!data) return
-      if (cancelled) return
+      if (!data || cancelled) return
 
       const mapped = (data as unknown as MessageRow[]).map((m) => {
-        const sender: "doctor" | "patient" =
-          m.sender_id === doctorUserId ? "doctor" : "patient";
+        const sender: 'doctor' | 'patient' = m.sender_id === doctorUserId ? 'doctor' : 'patient';
         return {
           id: m.id,
           sender,
           content: m.content,
-          timestamp: new Date(m.created_at).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
+          timestamp: new Date(m.created_at).toLocaleTimeString(undefined, {
+            hour: '2-digit',
+            minute: '2-digit',
           }),
-          type: "text" as const,
+          type: 'text' as const,
         };
       });
-      setMessages(mapped)
+      
+      if (!cancelled) {
+        setMessages(mapped)
+      }
     }
 
     loadMessages()
 
     // Track processed message IDs to prevent duplicates
     const processedMessageIds = new Set<string>()
+    let channel: ReturnType<typeof supabase.channel> | null = null
 
-    const channel = supabase
-      .channel(`messages-appointment-${appointmentId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `appointment_id=eq.${appointmentId}`
-        },
-        (payload) => {
-          const m = payload.new as MessageRow
-          
-          // Skip if we've already processed this message
-          if (processedMessageIds.has(m.id)) {
-            console.log('Skipping duplicate message:', m.id)
-            return
+    // Only set up the channel if we have all required IDs
+    if (appointmentId && doctorUserId && patientUserId) {
+      channel = supabase
+        .channel(`messages-appointment-${appointmentId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "messages",
+            filter: `appointment_id=eq.${appointmentId}`
+          },
+          (payload) => {
+            const m = payload.new as MessageRow
+            
+            // Skip if we've already processed this message
+            if (processedMessageIds.has(m.id)) {
+              console.log('Skipping duplicate message:', m.id)
+              return
+            }
+            
+            // Add to processed messages
+            processedMessageIds.add(m.id)
+            
+            // Only keep the last 100 message IDs to prevent memory leaks
+            if (processedMessageIds.size > 100) {
+              const ids = Array.from(processedMessageIds).slice(-100)
+              processedMessageIds.clear()
+              ids.forEach(id => processedMessageIds.add(id))
+            }
+            
+            // Only add the message if it's not from the current user
+            // (since we already added it optimistically)
+            if (m.sender_id === authUserId) {
+              console.log('Skipping own message in realtime update:', m.id)
+              return
+            }
+            
+            setMessages((prev) => {
+              // Check if message already exists (by ID or content + timestamp)
+              const messageExists = prev.some(pm => 
+                pm.id === m.id || 
+                (pm.content === m.content && 
+                 Math.abs(new Date(pm.timestamp).getTime() - new Date(m.created_at).getTime()) < 1000)
+              )
+              
+              if (messageExists) return prev
+              
+              return [
+                ...prev,
+                {
+                  id: m.id,
+                  sender: m.sender_id === doctorUserId ? "doctor" : "patient",
+                  content: m.content,
+                  timestamp: new Date(m.created_at).toLocaleTimeString([], { 
+                    hour: "2-digit", 
+                    minute: "2-digit" 
+                  }),
+                  type: "text",
+                },
+              ]
+            })
           }
-          
-          // Add to processed messages
-          processedMessageIds.add(m.id)
-          
-          // Only keep the last 100 message IDs to prevent memory leaks
-          if (processedMessageIds.size > 100) {
-            const ids = Array.from(processedMessageIds).slice(-100)
-            processedMessageIds.clear()
-            ids.forEach(id => processedMessageIds.add(id))
-          }
-          setMessages((prev) => {
-            if (prev.some((pm) => pm.id === m.id)) return prev
-            return [
-              ...prev,
-              {
-                id: m.id,
-                sender: m.sender_id === doctorUserId ? "doctor" : "patient",
-                content: m.content,
-                timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-                type: "text",
-              },
-            ]
-          })
-        }
-      )
-      .subscribe()
+        )
+        .subscribe()
+    }
 
     return () => {
       cancelled = true
-      supabase.removeChannel(channel)
+      if (channel) {
+        supabase.removeChannel(channel)
+      }
     }
-  }, [appointmentId, doctorUserId])
+  }, [appointmentId, doctorUserId, patientUserId, authUserId])
 
   // Patients list - using real data from the database
   const patients = [
@@ -409,9 +432,6 @@ export default function DoctorChatPage() {
           <div className="flex items-center justify-between mb-4">
             <h1 className="text-xl font-bold text-gray-900 dark:text-white">My Patients</h1>
             <div className="flex items-center space-x-2">
-              <Button size="sm" className="bg-gradient-to-r from-blue-600 to-green-600">
-                <Plus className="w-4 h-4" />
-              </Button>
               <Button size="sm" variant="ghost" className="lg:hidden" onClick={() => setShowSidebar(false)}>
                 <ArrowLeft className="w-4 h-4" />
               </Button>
@@ -526,12 +546,6 @@ export default function DoctorChatPage() {
                   >
                     <FileText className="w-4 h-4 mr-1" />
                     Record
-                  </Button>
-                  <Button variant="ghost" size="sm" className="hidden sm:flex">
-                    <Phone className="w-4 h-4" />
-                  </Button>
-                  <Button variant="ghost" size="sm">
-                    <Video className="w-4 h-4" />
                   </Button>
                   <Button variant="ghost" size="sm">
                     <MoreVertical className="w-4 h-4" />

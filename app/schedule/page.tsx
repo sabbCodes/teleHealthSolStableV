@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client"
 
 import { useState, useEffect } from "react"
@@ -285,7 +286,7 @@ export default function SchedulePage() {
   // Format doctor's data
   const doctorName = `Dr. ${formatName(doctor.first_name)} ${formatName(doctor.last_name)}`
   const consultationFee = doctor.consultation_fee || 0;
-  const platformFee = consultationFee * 0.025;
+  const platformFee = consultationFee * 0.10;
   const totalAmount = consultationFee;
   const location = [doctor.city, doctor.country].filter(Boolean).join(', ')
   const experience = doctor.years_of_experience ? `${doctor.years_of_experience} years` : 'Experienced'
@@ -403,17 +404,31 @@ export default function SchedulePage() {
 
       console.log('Raw selected date:', selectedDate, 'time:', selectedTime);
 
-      // 2. Get patient profile
-      const { data: patientProfile, error: profileError } = await supabase
+      // Get patient profile with user data
+      const { data: patientData, error: patientProfileError } = await supabase
         .from('patient_profiles')
-        .select('id, user_profile_id')
+        .select(`
+          id,
+          user_profile_id,
+          first_name,
+          last_name,
+          user_profiles!inner (email)
+        `)
         .eq('user_profile_id', user.id)
         .single();
 
-      if (profileError || !patientProfile) {
-        console.error('Patient profile error:', profileError);
+      if (patientProfileError || !patientData) {
+        console.error('Patient profile error:', patientProfileError);
         throw new Error('Please complete your patient profile before booking');
       }
+
+      const patientProfile = {
+        id: patientData.id,
+        user_profile_id: patientData.user_profile_id,
+        first_name: patientData.first_name,
+        last_name: patientData.last_name,
+        email: patientData.user_profiles?.email
+      };
 
       console.log('Patient profile found:', patientProfile);
 
@@ -577,6 +592,150 @@ export default function SchedulePage() {
         } else {
           throw scheduleError;
         }
+      }
+
+      // Debug: Log doctor profile data
+      console.log('Doctor profile data:', {
+        id: doctor.id,
+        user_profile_id: doctor.user_profile_id,
+        first_name: doctor.first_name,
+        last_name: doctor.last_name
+      });
+
+      // Get doctor's email from user_profiles
+      if (!doctor.user_profile_id) {
+        console.error('Doctor profile is missing user profile ID');
+        throw new Error('Could not find doctor contact information');
+      }
+
+      // Use the database function to get doctor's email (bypasses RLS)
+      console.log('Looking up doctor email with function for ID:', doctor.user_profile_id);
+      
+      const { data: doctorEmail, error: emailError } = await supabase
+        .rpc('get_doctor_email', { doctor_user_id: doctor.user_profile_id })
+        .single();
+
+      console.log('Doctor email lookup result:', { doctorEmail, error: emailError });
+
+      if (emailError || !doctorEmail) {
+        console.error('Failed to fetch doctor email:', emailError);
+        throw new Error('Could not retrieve doctor contact information');
+      }
+      
+      console.log('Found doctor email via function:', doctorEmail);
+
+      // Get patient's email from user_profiles if not already in patientProfile
+      const patientEmail = patientProfile.email || user.email;
+      if (!patientEmail) {
+        throw new Error('Patient email not found');
+      }
+
+      // Send calendar invite to both patient and doctor
+      try {
+        const patientName = [patientProfile.first_name, patientProfile.last_name]
+          .filter(Boolean)
+          .join(' ') || 'Patient';
+          
+const doctorName = [doctor.first_name, doctor.last_name]
+          .filter(Boolean)
+          .join(' ') || 'Your Doctor';
+        // Add null checks for selectedType and its properties
+        const meetingLink = selectedType && (selectedType.id === 'video' || selectedType.id === 'extended_video')
+          ? `${window.location.origin}/video-call?appointmentId=${scheduleData?.id || 'new'}`
+          : undefined;
+
+        // Default duration if selectedType is not available
+        const appointmentDuration = selectedType?.duration || '30 minutes';
+        const appointmentType = selectedType?.id || 'video';
+
+        // Send to patient
+        const patientResponse = await fetch('/api/send-calendar-invite', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: patientEmail,
+            patientName,
+            doctorName: doctorName,
+            date: scheduledDate,
+            time: startTimeStr,
+            duration: appointmentDuration,
+            type: appointmentType as 'video' | 'extended_video' | 'chat',
+            meetingLink,
+            recipientType: 'patient',
+          }),
+        });
+
+        // Send to doctor
+        const doctorResponse = await fetch('/api/send-calendar-invite', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: doctorEmail,
+            patientName,
+            doctorName: doctorName,
+            date: scheduledDate,
+            time: startTimeStr,
+            duration: appointmentDuration,
+            type: appointmentType as 'video' | 'extended_video' | 'chat',
+            meetingLink,
+            recipientType: 'doctor',
+          }),
+        });
+
+        if (!patientResponse.ok || !doctorResponse.ok) {
+          const patientError = await patientResponse.json().catch((e) => ({
+            status: patientResponse.status,
+            statusText: patientResponse.statusText,
+            error: e.message || 'Failed to parse error response'
+          }));
+          
+          const doctorError = await doctorResponse.json().catch((e) => ({
+            status: doctorResponse.status,
+            statusText: doctorResponse.statusText,
+            error: e.message || 'Failed to parse error response'
+          }));
+          
+          console.error('Failed to send calendar invites:', { 
+            patientError: {
+              status: patientResponse.status,
+              statusText: patientResponse.statusText,
+              ...patientError
+            },
+            doctorError: {
+              status: doctorResponse.status,
+              statusText: doctorResponse.statusText,
+              ...doctorError
+            },
+            requestData: {
+              patient: {
+                to: patientEmail,
+                patientName,
+                doctorName,
+                date: scheduledDate,
+                time: startTimeStr,
+                duration: selectedType.duration,
+                type: selectedType.id,
+                hasMeetingLink: !!meetingLink,
+                recipientType: 'patient'
+              },
+              doctor: {
+                to: doctorEmail,
+                patientName,
+                doctorName,
+                date: scheduledDate,
+                time: startTimeStr,
+                duration: selectedType.duration,
+                type: selectedType.id,
+                hasMeetingLink: !!meetingLink,
+                recipientType: 'doctor'
+              }
+            }
+          });
+          // Don't fail the whole flow if email fails
+        }
+      } catch (emailError) {
+        console.error('Error sending calendar invites:', emailError);
+        // Don't fail the whole flow if email fails
       }
 
       console.log('Appointment created successfully:', scheduleData);
@@ -778,7 +937,7 @@ export default function SchedulePage() {
                         <div
                           key={type.id}
                           onClick={() => handleConsultationTypeSelect(type)}
-                          className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                          className={`p-4 outline-none border-2 rounded-lg cursor-pointer transition-all ${
                             selectedType?.id === type.id
                               ? "border-blue-600 bg-blue-50 dark:bg-blue-900/20"
                               : "border-gray-200 dark:border-gray-700 hover:border-gray-300"
@@ -836,7 +995,7 @@ export default function SchedulePage() {
                             setSelectedDate(date.value);
                             setSelectedTime(""); // Reset time when date changes
                           }}
-                          className={`p-3 text-center border-2 rounded-lg transition-all ${
+                          className={`p-3 outline-none text-center border-2 rounded-lg transition-all ${
                             selectedDate === date.value
                               ? "border-blue-600 bg-blue-50 dark:bg-blue-900/20"
                               : "border-gray-200 dark:border-gray-700 hover:border-gray-300"
@@ -865,7 +1024,7 @@ export default function SchedulePage() {
                             key={slot.value}
                             type="button"
                             onClick={() => setSelectedTime(slot.time)}
-                            className={`p-2 text-sm text-center rounded border ${
+                            className={`p-2 outline-none text-sm text-center rounded border ${
                               selectedTime === slot.time
                                 ? "border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:border-blue-600 dark:text-blue-300"
                                 : "border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600"
@@ -896,7 +1055,7 @@ export default function SchedulePage() {
                     placeholder="Please describe your symptoms or reason for consultation..."
                     value={symptoms}
                     onChange={(e) => setSymptoms(e.target.value)}
-                    className="min-h-[100px]"
+                    className="min-h-[100px] outline-none"
                   />
                   <p className="text-sm text-gray-500 mt-2">
                     This helps the doctor prepare for your consultation and
@@ -985,7 +1144,7 @@ export default function SchedulePage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600 dark:text-gray-300">
-                        Platform Fee (2.5%):
+                        Platform Fee (10%):
                       </span>
                       <span className="font-medium text-gray-900 dark:text-white">
                         {platformFee.toFixed(2)} USDC
@@ -1023,7 +1182,7 @@ export default function SchedulePage() {
                       !selectedType ||
                       isProcessing
                     }
-                    className="w-full bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700"
+                    className="w-full bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700 outline-none"
                   >
                     {isProcessing ? (
                       <div className="flex items-center">

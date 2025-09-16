@@ -359,7 +359,7 @@ export default function DoctorsPage() {
 
                   <CardFooter className="border-t pt-4">
                     <Link href={`/schedule?doctorId=${doctor.id}`} className="w-full">
-                      <Button size="sm" className="w-full gap-2 bg-blue-600 hover:bg-blue-700">
+                      <Button size="sm" className="w-full gap-2 bg-blue-600 hover:bg-blue-700 outline-none">
                         <Calendar className="w-4 h-4" />
                         Schedule Appointment
                       </Button>

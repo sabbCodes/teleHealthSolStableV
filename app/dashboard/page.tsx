@@ -14,6 +14,7 @@ import {
   ChevronRight,
   LogOut,
   MessageCircle,
+  MessageSquare,
 } from "lucide-react";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { getAssociatedTokenAddress } from "@solana/spl-token";
@@ -335,10 +336,10 @@ export default function Dashboard() {
       color: "bg-blue-500",
     },
     {
-      icon: Video,
-      label: "Join Call",
-      href: "/video-call",
-      color: "bg-green-500",
+      icon: MessageSquare,
+      label: "AI Health Chat",
+      href: "/ai-chat",
+      color: "bg-gradient-to-r from-purple-500 to-pink-500",
     },
     {
       icon: FileText,
@@ -350,7 +351,7 @@ export default function Dashboard() {
       icon: Pill,
       label: "Order Medication",
       href: "/medication",
-      color: "bg-orange-500",
+      color: "bg-green-500",
     },
   ];
 
@@ -403,11 +404,11 @@ export default function Dashboard() {
                   <Avatar className="h-8 w-8">
                     <AvatarImage
                       src={avatarSrc}
-                      alt={userProfile?.full_name || "User"}
+                      alt={userProfile?.first_name || "User"}
                     />
                     <AvatarFallback>
-                      {userProfile?.full_name
-                        ? getInitials(userProfile.full_name)
+                      {userProfile?.first_name
+                        ? getInitials(userProfile.first_name)
                         : "U"}
                     </AvatarFallback>
                   </Avatar>
@@ -418,19 +419,17 @@ export default function Dashboard() {
                   <Avatar className="h-10 w-10">
                     <AvatarImage
                       src={avatarSrc}
-                      alt={userProfile?.full_name || "User"}
+                      alt={userProfile?.first_name || "User"}
                     />
                     <AvatarFallback>
-                      {userProfile?.full_name
-                        ? getInitials(formatName(userProfile.full_name))
+                      {userProfile?.first_name
+                        ? getInitials(formatName(userProfile.first_name))
                         : "U"}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex flex-col space-y-1">
                     <p className="text-sm font-medium leading-none">
-                      {userProfile?.full_name
-                        ? formatName(userProfile.full_name)
-                        : "User"}
+                      {userProfile?.first_name ? formatName(userProfile.first_name) : ''} {userProfile?.last_name ? formatName(userProfile.last_name) : ''}
                     </p>
                     <p className="text-xs leading-none text-muted-foreground">
                       {userProfile?.email}

@@ -116,6 +116,7 @@ export default function SignInPage() {
         unsubscribe?.data.subscription.unsubscribe();
       } catch (e) {
         // ignore
+        console.error("Failed to unsubscribe from auth state changes:", e);
       }
     };
   }, [router, toast]);

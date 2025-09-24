@@ -18,19 +18,19 @@ export default function VerifyEmailPage() {
 
   useEffect(() => {
     const verifyEmail = async () => {
-      const token = searchParams.get("token_hash");
+      const token = searchParams.get("token");
       const type = searchParams.get("type");
-      const next = searchParams.get("next") || "/signin";
 
       if (type === "signup" && token) {
         try {
           // Verify the email using the token
-          const { error } = await AuthService.verifyEmail(token);
+          const { error: verificationError } = await AuthService.verifyEmail(token);
           
-          if (error) {
-            throw new Error(error);
+          if (verificationError) {
+            throw new Error(verificationError);
           }
 
+          // Update state to show success
           setVerificationStatus("success");
           
           // Show success toast
@@ -39,7 +39,7 @@ export default function VerifyEmailPage() {
             description: "Your email has been successfully verified. You can now sign in.",
           });
 
-          // Redirect to signin after a short delay
+          // Redirect to signin after a delay to show success message
           setTimeout(() => {
             router.push("/signin");
           }, 3000);
@@ -50,14 +50,37 @@ export default function VerifyEmailPage() {
           setError(
             err instanceof Error ? err.message : "Failed to verify email. Please try again."
           );
+          
+          // Show error toast
+          toast({
+            variant: "destructive",
+            title: "Verification Failed",
+            description: err instanceof Error ? err.message : "Failed to verify email. Please try again.",
+          });
         }
       } else {
-        // If no token or wrong type, redirect to home
-        router.push("/");
+        // If no token or wrong type, show error and redirect after delay
+        setVerificationStatus("error");
+        setError("Invalid verification link. Please try again or request a new verification email.");
+        
+        toast({
+          variant: "destructive",
+          title: "Invalid Link",
+          description: "The verification link is invalid or has expired.",
+        });
+        
+        setTimeout(() => {
+          router.push("/signin");
+        }, 3000);
       }
     };
 
-    verifyEmail();
+    // Add a small delay to ensure the page renders before starting verification
+    const timer = setTimeout(() => {
+      verifyEmail();
+    }, 100);
+    
+    return () => clearTimeout(timer);
   }, [router, searchParams, toast]);
 
   return (

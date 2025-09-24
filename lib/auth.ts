@@ -240,18 +240,31 @@ export class AuthService {
   // Verify email with token
   static async verifyEmail(token: string) {
     try {
+      console.log('Verifying token:', token);
+      
+      // First, get the current user to get their email
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      
+      if (userError || !user?.email) {
+        throw new Error('Could not retrieve user information for verification');
+      }
+
       const { data, error } = await supabase.auth.verifyOtp({
-        token_hash: token,
+        email: user.email,
+        token: token,
         type: 'signup'
       });
 
+      console.log('Verification response:', { data, error });
+      
       if (error) throw error;
 
       return { data, error: null };
     } catch (error) {
+      console.error('Verification error:', error);
       return {
         data: null,
-        error: error instanceof Error ? error.message : 'Failed to verify email',
+        error: error instanceof Error ? error.message : 'Failed to verify email. The link may have expired or is invalid.',
       };
     }
   }

@@ -9,13 +9,10 @@ import {
   Mic,
   MicOff,
   PhoneOff,
-  Settings,
   MessageCircle,
   Share,
   Clock,
   FileText,
-  Monitor,
-  User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -57,7 +54,6 @@ export default function VideoCallPage() {
   const {
     localStream,
     remoteStream,
-    // isConnected,
     connectionStatus,
     isCallActive,
     toggleAudio,
@@ -388,19 +384,6 @@ export default function VideoCallPage() {
                 </Button>
               </motion.div>
 
-              {/* Screen Share */}
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button variant="secondary" size="lg" className="rounded-full w-12 h-12">
-                  <Monitor className="w-5 h-5" />
-                </Button>
-              </motion.div>
-
-              {/* Settings */}
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                <Button variant="secondary" size="lg" className="rounded-full w-12 h-12">
-                  <Settings className="w-5 h-5" />
-                </Button>
-              </motion.div>
             </div>
 
             {/* Additional Controls */}

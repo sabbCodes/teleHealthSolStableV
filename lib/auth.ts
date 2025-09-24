@@ -236,4 +236,23 @@ export class AuthService {
       };
     }
   }
+
+  // Verify email with token
+  static async verifyEmail(token: string) {
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        token_hash: token,
+        type: 'signup'
+      });
+
+      if (error) throw error;
+
+      return { data, error: null };
+    } catch (error) {
+      return {
+        data: null,
+        error: error instanceof Error ? error.message : 'Failed to verify email',
+      };
+    }
+  }
 }

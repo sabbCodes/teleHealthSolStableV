@@ -9,7 +9,7 @@ import {
   User,
   ArrowLeft,
   ArrowRight,
-  Shield,
+  // Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -276,8 +276,7 @@ export default function AccountTypeSelectionPage() {
               toast({
                 variant: "destructive",
                 title: "Wallet Setup Complete",
-                description:
-                  "PIN setup successful, but there was an issue retrieving your wallet address. Please contact support.",
+                description: `PIN setup successful, but there was an issue retrieving your wallet address. Please contact support. ${addressError instanceof Error ? addressError.message : JSON.stringify(addressError)}`,
               });
             }
           }
@@ -317,7 +316,6 @@ export default function AccountTypeSelectionPage() {
             className="bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border border-gray-200 dark:border-gray-700 hover:bg-white dark:hover:bg-gray-800"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back
           </Button>
         </Link>
       </motion.div>

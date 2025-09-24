@@ -133,7 +133,7 @@ export function PaymentReleaseTimer({
             </div>
 
             <div className="mt-4 text-xs text-gray-500 dark:text-gray-400 text-center">
-              If you don't release the payment manually, it will be automatically released to the doctor when the timer
+              If you don&apos;t release the payment manually, it will be automatically released to the doctor when the timer
               reaches zero.
             </div>
           </>

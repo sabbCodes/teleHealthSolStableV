@@ -144,7 +144,6 @@ export default function AIChatPage() {
             <Link href="/dashboard">
               <Button variant="ghost" size="sm">
                 <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Dashboard
               </Button>
             </Link>
             <div className="flex items-center space-x-3">

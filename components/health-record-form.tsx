@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge"
 interface HealthRecordFormProps {
   patientName: string
   patientId: string
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onSave?: (data: any) => void
   onCancel?: () => void
 }

@@ -1,7 +1,6 @@
 "use client"
 
-import type React from "react"
-import { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect, useRef, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
 import { motion, AnimatePresence } from "framer-motion"
 import {
@@ -22,6 +21,16 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import Link from "next/link"
@@ -119,22 +128,92 @@ export default function PatientChatPage() {
     }
   }, [])
 
-  // Fetch schedule once appointmentId is available
+  // Fetch schedule and set up real-time updates
   useEffect(() => {
-    if (!appointmentId) return
-    let cancelled = false
-    ;(async () => {
-      const { data, error } = await supabase.from("schedules").select("id, doctor_id, patient_id").eq("id", appointmentId).single()
+    if (!appointmentId) return;
+    
+    const fetchSchedule = async () => {
+      const { data, error } = await supabase
+        .from('schedules')
+        .select('*')
+        .eq('id', appointmentId)
+        .single();
+
       if (error) {
-        console.error("Failed to fetch schedule:", error)
-        return
+        console.error('Error fetching schedule:', error);
+        return;
       }
-      if (!cancelled) setSchedule(data)
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [appointmentId])
+
+      setSchedule(data);
+      setSessionStatus(data.status || 'active');
+      
+      // If status is pending_end, calculate remaining time
+      if (data.status === 'pending_end' && data.updated_at) {
+        const updatedAt = new Date(data.updated_at).getTime();
+        const now = new Date().getTime();
+        const elapsed = Math.floor((now - updatedAt) / 1000); // in seconds
+        const remaining = Math.max(0, 600 - elapsed); // 10 minutes = 600 seconds
+        
+        setCountdown(remaining);
+        
+        // Start countdown if there's time left
+        if (remaining > 0) {
+          const timer = setInterval(() => {
+            setCountdown(prev => {
+              if (prev === null || prev <= 1) {
+                clearInterval(timer);
+                return 0;
+              }
+              return prev - 1;
+            });
+          }, 1000);
+          
+          return () => clearInterval(timer);
+        }
+      }
+      
+      // Set up real-time subscription for status changes
+      const channel = supabase
+        .channel('schema-db-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'schedules',
+            filter: `id=eq.${appointmentId}`
+          },
+          (payload) => {
+            const newStatus = payload.new.status;
+            setSessionStatus(newStatus);
+            
+            // If status changed to pending_end, start countdown
+            if (newStatus === 'pending_end') {
+              setCountdown(600); // 10 minutes in seconds
+              
+              const timer = setInterval(() => {
+                setCountdown(prev => {
+                  if (prev === null || prev <= 1) {
+                    clearInterval(timer);
+                    return 0;
+                  }
+                  return prev - 1;
+                });
+              }, 1000);
+              
+              return () => clearInterval(timer);
+            }
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    };
+
+    fetchSchedule();
+  }, [appointmentId]);
 
   // After schedule, resolve doctor/patient to their user_profile_ids and fetch patient's doctors
   useEffect(() => {
@@ -476,13 +555,6 @@ export default function PatientChatPage() {
     }
   }
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      sendMessage()
-    }
-  }
-
   // Find the currently selected doctor, defaulting to the first doctor if none selected
   const selectedDoctor = doctors.find((doctor) => doctor.id === selectedChat) || doctors[0]
   const headerDoctorName = doctorProfile
@@ -495,6 +567,235 @@ export default function PatientChatPage() {
     .map((n) => n[0])
     .join("")
   const headerDoctorSpecialty = doctorProfile?.specialization || selectedDoctor?.specialty || 'General Practice'
+
+  // Session status state
+  const [sessionStatus, setSessionStatus] = useState<string>('scheduled')
+  const [countdown, setCountdown] = useState<number | null>(null)
+  const [showDisputeDialog, setShowDisputeDialog] = useState(false)
+  const [disputeReason, setDisputeReason] = useState('')
+  const [disputeStartTime, setDisputeStartTime] = useState<string | null>(null)
+  const [timeLeft, setTimeLeft] = useState<string>('24:00:00')
+  const [showDisputeBanner, setShowDisputeBanner] = useState(true)
+  // Removed unused sessionStartTime state
+
+  // Define a proper type for the Supabase payload
+  type ScheduleUpdatePayload = {
+    new: {
+      status: string;
+      updated_at?: string;
+    };
+  };
+
+  // Memoize the handleSessionComplete function to prevent infinite re-renders
+  const handleSessionComplete = useCallback(async () => {
+    if (!appointmentId) return;
+    
+    try {
+      const { error } = await supabase
+        .from('schedules')
+        .update({ 
+          status: 'completed',
+          updated_at: new Date().toISOString(),
+          completed_at: new Date().toISOString() 
+        })
+        .eq('id', appointmentId);
+      
+      if (error) throw error;
+      
+      setSessionStatus('completed');
+      setCountdown(null);
+      
+      // Optionally redirect to feedback/payment page
+      // router.push(`/appointment/complete/${appointmentId}`);
+    } catch (error) {
+      console.error('Error completing session:', error);
+    }
+  }, [appointmentId]);
+
+  const startSession = useCallback(async (): Promise<boolean> => {
+    if (!appointmentId) return false;
+    
+    try {
+      // First, check if the session is already active
+      const { data: currentSession } = await supabase
+        .from('schedules')
+        .select('status')
+        .eq('id', appointmentId)
+        .single();
+      
+      // If already active, no need to update
+      if (currentSession?.status === 'active') return true;
+      
+      // Update to active status
+      const { error } = await supabase
+        .from('schedules')
+        .update({ 
+          status: 'active',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', appointmentId);
+      
+      if (error) throw error;
+      return true;
+    } catch (error) {
+      console.error('Error starting session:', error);
+      return false;
+    }
+  }, [appointmentId]);
+
+  // Effect to handle session status updates and real-time sync
+  const updateSessionStatus = useCallback(async () => {
+    if (!appointmentId) return;
+    
+    try {
+      // Fetch current session status with only the columns we know exist
+      const { data: currentSession, error } = await supabase
+        .from('schedules')
+        .select('status, updated_at')
+        .eq('id', appointmentId)
+        .single();
+
+      if (error) throw error;
+      if (!currentSession) {
+        console.error('No session found with ID:', appointmentId);
+        return;
+      }
+
+      setSessionStatus(currentSession.status || 'scheduled');
+
+      // Auto-start session if it's in scheduled state
+      if (currentSession.status === 'scheduled') {
+        const sessionStarted = await startSession();
+        if (sessionStarted) {
+          setSessionStatus('active');
+          return;
+        }
+      }
+
+      // Handle countdown for pending_end status
+      if (currentSession.status === 'pending_end') {
+        const endRequestedAt = currentSession.updated_at 
+          ? new Date(currentSession.updated_at) 
+          : new Date();
+        const now = new Date();
+        const timeRemaining = Math.ceil(
+          (10 * 60 * 1000 - (now.getTime() - endRequestedAt.getTime())) / 1000
+        );
+        
+        if (timeRemaining > 0) {
+          setCountdown(timeRemaining);
+        } else {
+          await handleSessionComplete();
+        }
+      }
+    } catch (error) {
+      console.error('Error in updateSessionStatus:', error);
+    }
+  }, [appointmentId, handleSessionComplete, startSession]);
+
+  useEffect(() => {
+    if (!appointmentId) return;
+    
+    // Initial status update
+    updateSessionStatus();
+    
+    const channel = supabase
+      .channel(`schedule_${appointmentId}_changes`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'schedules',
+          filter: `id=eq.${appointmentId}`
+        },
+        (payload: ScheduleUpdatePayload) => {
+          const newStatus = payload.new.status;
+          setSessionStatus(newStatus);
+          
+          if (newStatus === 'pending_end') {
+            // Start countdown when session is marked as pending end
+            const endRequestedAt = payload.new.updated_at 
+              ? new Date(payload.new.updated_at) 
+              : new Date();
+            const now = new Date();
+            const timeRemaining = Math.ceil(
+              (10 * 60 * 1000 - (now.getTime() - endRequestedAt.getTime())) / 1000
+            );
+            setCountdown(timeRemaining > 0 ? timeRemaining : 0);
+          } else if (newStatus === 'completed') {
+            // Handle session completion
+            setCountdown(null);
+          } else if (newStatus === 'disputed') {
+            // Set dispute start time when status changes to disputed
+            setDisputeStartTime(payload.new.updated_at || new Date().toISOString());
+          }
+        }
+      )
+      .subscribe();
+
+    // Clean up subscription on unmount
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appointmentId])
+
+  // Handle dispute countdown timer
+  useEffect(() => {
+    if (sessionStatus !== 'disputed' || !disputeStartTime) return;
+
+    const disputeStart = new Date(disputeStartTime).getTime();
+    const disputeEnd = disputeStart + 24 * 60 * 60 * 1000; // 24 hours from dispute start
+    
+    const updateTimer = () => {
+      const now = new Date().getTime();
+      const distance = disputeEnd - now;
+      
+      if (distance < 0) {
+        setTimeLeft('00:00:00');
+        // When countdown ends, show waiting for support message
+        return;
+      }
+      
+      // Calculate time left
+      const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+      
+      setTimeLeft(
+        `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+      );
+    };
+    
+    // Update immediately
+    updateTimer();
+    
+    // Update every second
+    const timer = setInterval(updateTimer, 1000);
+    
+    return () => clearInterval(timer);
+  }, [sessionStatus, disputeStartTime]);
+
+  // Handle session countdown timer
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    
+    if (sessionStatus === 'pending_end' && countdown !== null && countdown > 0) {
+      timer = setInterval(() => {
+        setCountdown((prev: number | null) => (prev !== null ? prev - 1 : null));
+      }, 1000);
+    } else if (countdown === 0) {
+      // Countdown finished, complete the session
+      handleSessionComplete();
+    }
+
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [countdown, sessionStatus, handleSessionComplete]);
+
+
 
   return (
     <div className="h-screen bg-gray-50 dark:bg-gray-900 flex relative">
@@ -584,6 +885,154 @@ export default function PatientChatPage() {
         </div>
       </div>
 
+      {/* Dispute Resolution Banner - Shows when session is in disputed status */}
+      {sessionStatus === 'disputed' && showDisputeBanner && (
+        <div className="fixed left-1/2 transform -translate-x-1/2 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 shadow-lg max-w-2xl w-full z-50"
+          style={{ 
+            bottom: '100px',
+            maxHeight: '200px',
+            overflowY: 'auto'
+          }}>
+          {/* Close button */}
+          <button 
+            onClick={() => setShowDisputeBanner(false)}
+            className="absolute top-2 right-2 p-1 rounded-full hover:bg-yellow-100 dark:hover:bg-yellow-800/50"
+            aria-label="Close banner"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-yellow-600 dark:text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex-1">
+              <h3 className="font-medium text-yellow-800 dark:text-yellow-200">
+                ⚠️ Dispute in Progress
+              </h3>
+              <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+                You&apos;ve filed a dispute. You have <span className="font-mono font-bold">{timeLeft}</span> to resolve this with the doctor before support intervenes.
+              </p>
+              <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-2">
+                Note: False disputes may result in account suspension. Please resolve amicably if possible.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700"
+                onClick={async () => {
+                  // Open chat with support
+                  window.open("https://t.me/+AyXlku_fTwA2ZGJk", "_blank");
+                }}
+              >
+                Contact Support
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="bg-green-50 hover:bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:border-green-800 dark:text-green-200 dark:hover:bg-green-900/50"
+                onClick={async () => {
+                  if (!appointmentId) return;
+                  const { error } = await supabase
+                    .from('schedules')
+                    .update({ 
+                      status: 'completed',
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq('id', appointmentId);
+                  if (!error) {
+                    setSessionStatus('completed');
+                  }
+                }}
+              >
+                Resolve Dispute
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="text-red-600 border-red-200 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/50"
+                onClick={async () => {
+                  if (!appointmentId) return;
+                  const { error } = await supabase
+                    .from('schedules')
+                    .update({ 
+                      status: 'active',
+                      dispute_reason: null,
+                      dispute_started_at: null,
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq('id', appointmentId);
+                  if (!error) {
+                    setSessionStatus('active');
+                    setDisputeReason('');
+                  }
+                }}
+              >
+                Cancel Dispute
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Dispute Dialog */}
+      <AlertDialog open={showDisputeDialog} onOpenChange={setShowDisputeDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>⚠️ Open Dispute</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>Please provide a reason for disputing this session. This will be reviewed by our support team within 24 hours.</p>
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-md border border-yellow-100 dark:border-yellow-800">
+                <p className="text-sm font-medium text-yellow-800 dark:text-yellow-200">Important Notice</p>
+                <ul className="text-xs text-yellow-700 dark:text-yellow-300 list-disc pl-5 mt-1 space-y-1">
+                  <li>Both parties have 24 hours to resolve the dispute amicably</li>
+                  <li>False disputes may result in account suspension</li>
+                  <li>Support will review and make a final decision if unresolved</li>
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4">
+            <Textarea
+              placeholder="Please describe the issue in detail..."
+              value={disputeReason}
+              onChange={(e) => setDisputeReason(e.target.value)}
+              className="min-h-[120px]"
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              className="bg-red-600 hover:bg-red-700"
+              disabled={!disputeReason.trim()}
+              onClick={async () => {
+                if (!appointmentId) return;
+                
+                const { error } = await supabase
+                  .from('schedules')
+                  .update({
+                    status: 'disputed',
+                    dispute_reason: disputeReason,
+                    dispute_started_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('id', appointmentId);
+                
+                if (error) {
+                  console.error('Error updating session status:', error);
+                  return;
+                }
+                
+                setSessionStatus('disputed');
+                setShowDisputeDialog(false);
+              }}
+            >
+              Submit Dispute
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {selectedDoctor ? (
@@ -617,11 +1066,51 @@ export default function PatientChatPage() {
                 </div>
 
                 <div className="flex items-center space-x-2">
+                  {sessionStatus === 'pending_end' && countdown !== null && countdown > 0 ? (
+                  <div className="flex items-center space-x-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={() => setShowDisputeDialog(true)}
+                      className="text-amber-600 border-amber-300 hover:bg-amber-50"
+                    >
+                      Open Dispute
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                      onClick={async () => {
+                        if (!appointmentId) return;
+                        
+                        const { error } = await supabase
+                          .from('schedules')
+                          .update({
+                            status: 'completed',
+                            ended_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
+                          })
+                          .eq('id', appointmentId);
+                        
+                        if (error) {
+                          console.error('Error completing session:', error);
+                          return;
+                        }
+                        
+                        setSessionStatus('completed');
+                        // Redirect to payment page
+                        window.location.href = '/payment';
+                      }}
+                    >
+                      End Session
+                    </Button>
+                  </div>
+                ) : (
                   <Link href="/payment">
                     <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white">
                       End Session
                     </Button>
                   </Link>
+                )}
                   <Button variant="ghost" size="sm">
                     <MoreVertical className="w-4 h-4" />
                   </Button>
@@ -664,48 +1153,84 @@ export default function PatientChatPage() {
               <div ref={messagesEndRef} />
             </div>
 
+            {/* Session Status Banner */}
+            {sessionStatus === 'pending_end' && countdown !== null && countdown > 0 && (
+              <div className="bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 p-2 text-center">
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                  Session ending in {Math.floor(countdown / 60)}:{(countdown % 60).toString().padStart(2, '0')}
+                </p>
+              </div>
+            )}
+
             {/* Message Input */}
             <div className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 p-4">
               <div className="flex items-end space-x-2">
                 <div className="flex-1">
-                  <div className="flex items-center space-x-2 mb-2">
-                    <Button variant="ghost" size="sm">
-                      <Paperclip className="w-4 h-4" />
+                  {/* Media Buttons */}
+                  <div className="flex items-center space-x-1 mb-2">
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                      <Paperclip className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="sm" className="hidden sm:flex">
-                      <ImageIcon className="w-4 h-4" />
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                      <ImageIcon className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="sm" className="hidden sm:flex">
-                      <Smile className="w-4 h-4" />
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                      <Smile className="h-4 w-4" />
                     </Button>
                   </div>
 
-                  <Textarea
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="Type your message..."
-                    className="min-h-[60px] resize-none"
-                  />
-                </div>
+                  <div>
+                    {sessionStatus === 'completed' ? (
+                      <div className="text-center py-4 text-gray-500 dark:text-gray-400">
+                        <p>This session has been completed. Messaging is no longer available.</p>
+                        <p className="text-sm mt-1">Please start a new session if you need further assistance.</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center space-x-2">
+                          <Textarea
+                            value={message}
+                            onChange={(e) => setMessage(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault()
+                                if (message.trim()) {
+                                  sendMessage()
+                                }
+                              }
+                            }}
+                            placeholder="Type a message..."
+                            className="min-h-[90px] flex-1 resize-none"
+                            disabled={isRecording}
+                          />
+                          <div className="flex flex-col space-y-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setIsRecording(!isRecording)}
+                              className={isRecording ? "text-red-600" : ""}
+                              disabled={sessionStatus === 'completed'}
+                            >
+                              {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                            </Button>
 
-                <div className="flex flex-col space-y-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsRecording(!isRecording)}
-                    className={isRecording ? "text-red-600" : ""}
-                  >
-                    {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                  </Button>
-
-                  <Button
-                    onClick={sendMessage}
-                    disabled={!message.trim()}
-                    className="bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700 text-white"
-                  >
-                    <Send className="w-4 h-4" />
-                  </Button>
+                            <Button
+                              onClick={sendMessage}
+                              disabled={!message.trim() || sessionStatus === 'completed'}
+                              className="bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700 text-white"
+                            >
+                              <Send className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                        {sessionStatus === 'disputed' && (
+                          <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-2">
+                            ⚠️ This session is under dispute. Please resolve the dispute to continue messaging.
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

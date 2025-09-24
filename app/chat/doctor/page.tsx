@@ -22,6 +22,16 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Dialog, DialogContent } from "@/components/ui/dialog"
@@ -43,6 +53,7 @@ export default function DoctorChatPage() {
     id: string
     doctor_id: string
     patient_id: string
+    status: string
   }>(null)
   const [authUserId, setAuthUserId] = useState<string | null>(null)
   const [doctorUserId, setDoctorUserId] = useState<string | null>(null)
@@ -54,9 +65,14 @@ export default function DoctorChatPage() {
     date_of_birth?: string | null;
   } | null>(null)
   const [scheduleNote, setScheduleNote] = useState<string | null>(null)
+  const [showEndSessionConfirm, setShowEndSessionConfirm] = useState(false)
   const [messages, setMessages] = useState<
     { id: string; sender: "doctor" | "patient"; content: string; timestamp: string; type: "text" | "file" }[]
   >([])
+  const [sessionStatus, setSessionStatus] = useState<string>('active')
+  const [showDisputeBanner, setShowDisputeBanner] = useState(true)
+  const [disputeStartTime, setDisputeStartTime] = useState<string | null>(null)
+  const [timeLeft, setTimeLeft] = useState<string>('24:00:00')
 
   // Supabase messages row type
   type MessageRow = {
@@ -67,6 +83,19 @@ export default function DoctorChatPage() {
     content: string
     created_at: string
   }
+
+  // Type for schedule update payload
+  type ScheduleUpdatePayload = {
+    new: {
+      id: string;
+      status: string;
+      updated_at: string;
+      [key: string]: unknown; // Use unknown instead of any for type safety
+    };
+    old: {
+      [key: string]: unknown; // Use unknown instead of any for type safety
+    };
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -80,6 +109,74 @@ export default function DoctorChatPage() {
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  // Handle dispute countdown timer
+  useEffect(() => {
+    if (sessionStatus !== 'disputed' || !disputeStartTime) return;
+
+    const disputeStart = new Date(disputeStartTime).getTime();
+    const disputeEnd = disputeStart + 24 * 60 * 60 * 1000; // 24 hours from dispute start
+    
+    const updateTimer = () => {
+      const now = new Date().getTime();
+      const distance = disputeEnd - now;
+      
+      if (distance < 0) {
+        setTimeLeft('00:00:00');
+        return;
+      }
+      
+      // Calculate time left
+      const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+      
+      setTimeLeft(
+        `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+      );
+    };
+    
+    // Update immediately
+    updateTimer();
+    
+    // Update every second
+    const timer = setInterval(updateTimer, 1000);
+    
+    return () => clearInterval(timer);
+  }, [sessionStatus, disputeStartTime]);
+
+  // Subscribe to real-time updates for session status
+  useEffect(() => {
+    if (!appointmentId) return;
+    
+    const channel = supabase
+      .channel(`schedule_${appointmentId}_changes`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'schedules',
+          filter: `id=eq.${appointmentId}`
+        },
+        (payload: ScheduleUpdatePayload) => {
+          const newStatus = payload.new.status;
+          setSessionStatus(newStatus);
+          
+          if (newStatus === 'disputed') {
+            // Set dispute start time when status changes to disputed
+            setDisputeStartTime(payload.new.updated_at || new Date().toISOString());
+            setShowDisputeBanner(true);
+          }
+        }
+      )
+      .subscribe();
+
+    // Clean up subscription on unmount
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [appointmentId]);
 
   // Read appointment ID from search params (supports multiple common keys)
   useEffect(() => {
@@ -113,22 +210,49 @@ export default function DoctorChatPage() {
     }
   }, [])
 
-  // Fetch schedule once appointmentId is available
+  // Fetch schedule and messages when appointmentId changes
   useEffect(() => {
-    if (!appointmentId) return
-    let cancelled = false
-    ;(async () => {
-      const { data, error } = await supabase.from("schedules").select("id, doctor_id, patient_id").eq("id", appointmentId).single()
+    if (!appointmentId) return;
+    
+    const fetchSchedule = async () => {
+      const { data, error } = await supabase
+        .from('schedules')
+        .select('*')
+        .eq('id', appointmentId)
+        .single();
+
       if (error) {
-        console.error("Failed to fetch schedule:", error)
-        return
+        console.error('Error fetching schedule:', error);
+        return;
       }
-      if (!cancelled) setSchedule(data)
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [appointmentId])
+
+      setSchedule(data);
+      setSessionStatus(data.status || 'active');
+      
+      // Set up real-time subscription for status changes
+      const channel = supabase
+        .channel('schema-db-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'schedules',
+            filter: `id=eq.${appointmentId}`
+          },
+          (payload) => {
+            setSessionStatus(payload.new.status);
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    };
+
+    fetchSchedule();
+  }, [appointmentId]);
 
   // After schedule, resolve doctor/patient to their user_profile_ids and fetch patient profile for header
   useEffect(() => {
@@ -393,13 +517,6 @@ export default function DoctorChatPage() {
     }
   }
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      sendMessage()
-    }
-  }
-
   const selectedPatient = patients.find((patient) => patient.id === selectedChat)
   const headerPatientName = patientProfile
     ? `${patientProfile.first_name ?? ""} ${patientProfile.last_name ?? ""}`.trim() || "Patient"
@@ -408,7 +525,7 @@ export default function DoctorChatPage() {
   const headerPatientInitials = (headerPatientName || "")
     .split(" ")
     .filter(Boolean)
-    .map((n) => n[0])
+    .map(n => n[0])
     .join("")
 
   return (
@@ -418,14 +535,57 @@ export default function DoctorChatPage() {
         <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setShowSidebar(false)} />
       )}
 
-      {/* Sidebar - Patient List */}
+      {/* Dispute Resolution Banner - Shows when session is in disputed status */}
+      {sessionStatus === 'disputed' && showDisputeBanner && (
+        <div 
+          className="fixed left-1/2 transform -translate-x-1/2 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 shadow-lg max-w-2xl w-full z-50"
+          style={{ 
+            bottom: '100px',
+            maxHeight: '200px',
+            overflowY: 'auto'
+          }}
+        >
+          {/* Close button */}
+          <button 
+            onClick={() => setShowDisputeBanner(false)}
+            className="absolute top-2 right-2 p-1 rounded-full hover:bg-yellow-100 dark:hover:bg-yellow-800/50"
+            aria-label="Close banner"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-yellow-600 dark:text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex-1">
+              <h3 className="font-medium text-yellow-800 dark:text-yellow-200">
+                ⚠️ Dispute in Progress
+              </h3>
+              <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+                The patient has filed a dispute. You have <span className="font-mono font-bold">{timeLeft}</span> to resolve this with the patient before support intervenes.
+              </p>
+              <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-2">
+                Note: Support will review the dispute and make a final decision if not resolved.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto mt-3">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700"
+                  onClick={() => window.open("https://t.me/+AyXlku_fTwA2ZGJk", "_blank")}
+                >
+                  Contact Support
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sidebar */}
       <div
-        className={`
-        ${showSidebar ? "translate-x-0" : "-translate-x-full"}
-        lg:translate-x-0 fixed lg:relative z-50 lg:z-auto
-        w-80 lg:w-80 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 
-        flex flex-col transition-transform duration-300 ease-in-out h-full
-      `}
+        className={`fixed inset-y-0 left-0 z-30 w-72 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transform ${
+          showSidebar ? "translate-x-0" : "-translate-x-full"
+        } transition-transform duration-200 ease-in-out lg:translate-x-0 lg:static lg:inset-0`}
       >
         {/* Header */}
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
@@ -501,6 +661,46 @@ export default function DoctorChatPage() {
         </div>
       </div>
 
+      {/* End Session Confirmation Dialog */}
+      <AlertDialog open={showEndSessionConfirm} onOpenChange={setShowEndSessionConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>End Session?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to mark this session as completed? The patient will have 10 minutes to confirm or dispute the session.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              className="bg-green-600 hover:bg-green-700"
+              onClick={async () => {
+                if (!appointmentId) return;
+                
+                const { error } = await supabase
+                  .from('schedules')
+                  .update({
+                    status: 'pending_end',
+                    end_requested_by: (await supabase.auth.getUser()).data.user?.id,
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('id', appointmentId);
+                
+                if (error) {
+                  console.error('Error updating session status:', error);
+                  return;
+                }
+                
+                setSessionStatus('pending_end');
+                setShowEndSessionConfirm(false);
+              }}
+            >
+              Confirm End Session
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
         {selectedPatient ? (
@@ -547,6 +747,21 @@ export default function DoctorChatPage() {
                     <FileText className="w-4 h-4 mr-1" />
                     Record
                   </Button>
+                  {sessionStatus === 'active' && (
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      className="bg-green-100 text-green-700 hover:bg-green-200"
+                      onClick={() => setShowEndSessionConfirm(true)}
+                    >
+                      Mark as Completed
+                    </Button>
+                  )}
+                  {sessionStatus === 'pending_end' && (
+                    <div className="text-sm text-amber-600 bg-amber-50 px-3 py-1 rounded-md">
+                      Waiting for patient confirmation...
+                    </div>
+                  )}
                   <Button variant="ghost" size="sm">
                     <MoreVertical className="w-4 h-4" />
                   </Button>
@@ -598,32 +813,58 @@ export default function DoctorChatPage() {
                     </Button>
                   </div>
 
-                  <Textarea
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    onKeyPress={handleKeyPress}
-                    placeholder="Type your message..."
-                    className="min-h-[60px] resize-none"
-                  />
-                </div>
+                  {sessionStatus === 'completed' ? (
+                    <div className="text-center py-4 text-gray-500 dark:text-gray-400">
+                      <p>This session has been completed. Messaging is no longer available.</p>
+                      <p className="text-sm mt-1">Please be patient while escrow release funds to your wallet.</p>
+                    </div>
+                  ) : (
+                    <div className="border-t border-gray-200 dark:border-gray-700 p-4">
+                      <div className="flex items-center space-x-2">
+                        <Textarea
+                          value={message}
+                          onChange={(e) => setMessage(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              if (message.trim() && sessionStatus !== 'disputed') {
+                                sendMessage();
+                              }
+                            }
+                          }}
+                          placeholder={sessionStatus === 'disputed' 
+                            ? 'This session is under dispute. Please wait for resolution...' 
+                            : 'Type your message...'}
+                          className="min-h-[90px] flex-1 resize-none"
+                          disabled={isRecording || sessionStatus === 'disputed'}
+                        />
+                        <div className="flex flex-col space-y-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setIsRecording(!isRecording)}
+                            className={isRecording ? "text-red-600" : ""}
+                            disabled={sessionStatus === 'disputed' || sessionStatus === 'completed'}
+                          >
+                            {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                          </Button>
 
-                <div className="flex flex-col space-y-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setIsRecording(!isRecording)}
-                    className={isRecording ? "text-red-600" : ""}
-                  >
-                    {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                  </Button>
-
-                  <Button
-                    onClick={sendMessage}
-                    disabled={!message.trim()}
-                    className="bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700 text-white"
-                  >
-                    <Send className="w-4 h-4" />
-                  </Button>
+                          <Button
+                            onClick={sendMessage}
+                            disabled={!message.trim() || sessionStatus === 'disputed' || sessionStatus === 'completed'}
+                            className="bg-gradient-to-r from-blue-600 to-green-600 hover:from-blue-700 hover:to-green-700 text-white"
+                          >
+                            <Send className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                      {sessionStatus === 'disputed' && (
+                        <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-2">
+                          ⚠️ This session is under dispute. Please wait for the patient or support to resolve the issue.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -212,8 +212,16 @@ export class AuthService {
 
       if (error) throw error;
 
+      // Consider the user verified if they have an email and either:
+      // 1. They have a confirmed email timestamp, OR
+      // 2. They signed in with an OAuth provider (indicated by identities array)
+      const isVerified = user?.email && (
+        user.email_confirmed_at !== null || 
+        (user.identities && user.identities.length > 0)
+      );
+
       return {
-        isVerified: user?.email_confirmed_at ? true : false,
+        isVerified,
         user,
         error: null,
       };

@@ -124,6 +124,7 @@ export const useWebRTC = (role: UserRole, appointmentId: string): UseWebRTCRetur
       setConnectionStatus('error');
       return null;
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ sendSignal]);
 
   // initializeRealtime will be defined after handlers

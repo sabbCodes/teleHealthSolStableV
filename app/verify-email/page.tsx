@@ -9,7 +9,6 @@ export default function VerifyEmailPage() {
   const router = useRouter();
 
   useEffect(() => {
-    // Redirect to sign-in after 5 seconds
     const timer = setTimeout(() => {
       router.push("/signin");
     }, 5000);

@@ -16,7 +16,7 @@ export interface DoctorProfile {
   reviews_count?: number;
   is_verified?: boolean;
   education?: string[] | null;
-  certifications?: string[] | null;
+  // certifications?: string[] | null;
   bio?: string | null;
   name?: string | null;
   wallet_address?: string | null;
@@ -39,7 +39,6 @@ export async function fetchDoctorById(id: string): Promise<DoctorProfile | null>
         country,
         languages,
         bio,
-        certifications,
         education,
         is_verified,
         wallet_address
@@ -78,7 +77,6 @@ export async function fetchDoctors({
         country,
         languages,
         bio,
-        certifications,
         education,
         is_verified,
         wallet_address
@@ -115,7 +113,6 @@ export async function fetchDoctors({
       reviews_count: Math.floor(Math.random() * 100) + 10, // Random reviews between 10-110
       // Ensure all required fields are included
       bio: doctor.bio || null,
-      certifications: doctor.certifications || null,
       education: doctor.education || null,
       is_verified: doctor.is_verified || false,
       wallet_address: doctor.wallet_address || null,

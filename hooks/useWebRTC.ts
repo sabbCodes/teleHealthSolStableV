@@ -24,7 +24,7 @@ export const useWebRTC = (role: UserRole, appointmentId: string): UseWebRTCRetur
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
   const [isCallActive, setIsCallActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const peerConnection = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   type SignalMessage = {
